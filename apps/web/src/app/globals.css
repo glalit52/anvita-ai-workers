@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #fafafc;
+  --foreground: #11121c;
+  --card: #ffffff;
+  --card-foreground: #11121c;
+  --popover: #ffffff;
+  --muted: #f2f3f7;
+  --muted-foreground: #5f6175;
+  --subtle: #f7f7fa;
+  --border: #e5e6ee;
+  --input: #dfe0ea;
+  --ring: #6d5efc;
+  --primary: #5b4cf0;
+  --primary-hover: #4c3ee0;
+  --primary-foreground: #ffffff;
+  --primary-soft: #efedff;
+  --primary-soft-foreground: #4334d1;
+  --saffron: #f59e0b;
+  --saffron-soft: #fff4e0;
+  --success: #15803d;
+  --success-soft: #e8f7ee;
+  --warning: #b45309;
+  --warning-soft: #fdf3e2;
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --info: #0369a1;
+  --info-soft: #e6f3fb;
+  --sidebar: #f5f5f9;
+  --canvas-dot: #d4d5df;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --shadow-color: 230 20% 20%;
+}
+
+.dark {
+  --background: #0b0b12;
+  --foreground: #ececf3;
+  --card: #12121b;
+  --card-foreground: #ececf3;
+  --popover: #161621;
+  --muted: #1b1b27;
+  --muted-foreground: #9b9cb2;
+  --subtle: #15151f;
+  --border: #262636;
+  --input: #2e2e40;
+  --ring: #8a7dff;
+  --primary: #7a6cff;
+  --primary-hover: #8c80ff;
+  --primary-foreground: #ffffff;
+  --primary-soft: #221f42;
+  --primary-soft-foreground: #b9b1ff;
+  --saffron: #fbbf24;
+  --saffron-soft: #2e2410;
+  --success: #4ade80;
+  --success-soft: #11291b;
+  --warning: #fbbf24;
+  --warning-soft: #2c2210;
+  --danger: #f87171;
+  --danger-soft: #2f1416;
+  --info: #38bdf8;
+  --info-soft: #0f2533;
+  --sidebar: #0f0f17;
+  --canvas-dot: #2a2a3a;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --shadow-color: 240 30% 2%;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+  --color-saffron: var(--saffron);
+  --color-saffron-soft: var(--saffron-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-sidebar: var(--sidebar);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --shadow-soft: 0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.06);
+  --shadow-pop: 0 8px 30px hsl(var(--shadow-color) / 0.16);
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-pulse-dot: pulse-dot 1.4s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-dot {
+    0%, 80%, 100% { opacity: 0.25; }
+    40% { opacity: 1; }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--primary-soft);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .bg-dots {
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* React Flow theming */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-connectionline-stroke: var(--primary);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-minimap-background-color: var(--card);
+  --xy-handle-background-color: var(--primary);
+  --xy-handle-border-color: var(--card);
+  --xy-attribution-background-color: transparent;
+}
