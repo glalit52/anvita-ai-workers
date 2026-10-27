@@ -5,21 +5,27 @@ import { Bot, Check, Clock, Pencil, ShieldCheck, Workflow, X } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AppLogo } from "@/components/brand/app-logo";
-import { useApp } from "@/lib/store";
+import { useApp, useSetting } from "@/lib/store";
 import { appById } from "@/lib/mock/apps";
 import { cn } from "@/lib/utils";
 import { ApprovalPreview } from "./approval-preview";
 
-export function ApprovalCard({ approvalId, compact }: { approvalId: string; compact?: boolean }) {
+export function ApprovalCard({ approvalId, compact, selected, onSelect }: { approvalId: string; compact?: boolean; selected?: boolean; onSelect?: (v: boolean) => void }) {
   const approval = useApp((s) => s.approvals.find((a) => a.id === approvalId));
   const decide = useApp((s) => s.decideApproval);
   const [editing, setEditing] = useState(false);
+  const [body, setBody] = useState<string | null>(null);
+  const [alwaysAllow, setAlwaysAllow] = useSetting<boolean>(`allow:${approval?.requestedBy.name}:${approval?.action}`, false);
   if (!approval) return null;
 
   const pending = approval.status === "pending";
   const act = (d: "approved" | "rejected") => {
     decide(approval.id, d);
-    toast[d === "approved" ? "success" : "message"](d === "approved" ? `Approved — ${appById[approval.appId]?.name} action will run now` : "Rejected — the requester has been notified");
+    const edited = body !== null && approval.preview.kind === "email" && body !== approval.preview.body;
+    toast[d === "approved" ? "success" : "message"](
+      d === "approved" ? (edited ? `Approved with your edits — ${appById[approval.appId]?.name} will send the edited version` : `Approved — ${appById[approval.appId]?.name} action will run now`) : "Rejected — the requester has been notified",
+    );
+    if (d === "approved" && alwaysAllow) toast(`Future “${approval.action}” requests from ${approval.requestedBy.name} will run without asking`);
     setEditing(false);
   };
 
@@ -32,6 +38,9 @@ export function ApprovalCard({ approvalId, compact }: { approvalId: string; comp
       )}
     >
       <div className={cn("flex items-start gap-3 px-4 py-3", pending ? "bg-saffron-soft/60" : "bg-subtle")}>
+        {onSelect && pending && (
+          <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Select ${approval.title}`} className="mt-2 size-4 accent-[var(--primary)]" />
+        )}
         <AppLogo appId={approval.appId} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -57,7 +66,7 @@ export function ApprovalCard({ approvalId, compact }: { approvalId: string; comp
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" />
           {approval.reason}
         </p>
-        <ApprovalPreview approval={approval} editable={editing} />
+        <ApprovalPreview approval={approval} editable={editing} onBodyChange={setBody} bodyOverride={body ?? undefined} />
         {pending ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="success" onClick={() => act("approved")}>
@@ -72,7 +81,7 @@ export function ApprovalCard({ approvalId, compact }: { approvalId: string; comp
               <X /> Reject
             </Button>
             <label className="ml-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <input type="checkbox" className="accent-[var(--primary)]" /> Always allow for this Worker
+              <input type="checkbox" checked={alwaysAllow} onChange={(e) => setAlwaysAllow(e.target.checked)} className="accent-[var(--primary)]" /> Always allow {approval.requestedBy.type === "worker" ? "for this Worker" : "this action"}
             </label>
           </div>
         ) : (

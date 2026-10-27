@@ -9,6 +9,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { appById } from "@/lib/mock/apps";
 import { cn, sleep } from "@/lib/utils";
+import { useApp, useSetting } from "@/lib/store";
 
 const roles = ["Founder / CEO", "Operations", "Finance & accounts", "Sales", "Marketing", "Customer support", "HR", "IT"];
 const goals = ["Weekly business reports", "Customer support on WhatsApp", "GST & accounting work", "Sales follow-ups", "Marketing analytics", "Hiring & onboarding", "IT helpdesk", "Research"];
@@ -19,6 +20,8 @@ const homeChannels = [
   { id: "web", label: "Web only", desc: "Use the Anvita app for now" },
 ];
 const suggestedApps = ["gmail", "gdrive", "hubspot", "shopify", "tally", "metaads", "zendesk", "razorpay"];
+
+const LEARN_SOURCES = ["#general, #finance, #support (last 90 days)", "Google Drive › Policies & SOPs", "HubSpot pipeline stages and owners"];
 
 const steps = ["Workspace", "About you", "Home channel", "Connect apps", "Learn", "Ready"];
 
@@ -31,8 +34,23 @@ export default function OnboardingPage() {
   const [connected, setConnected] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [learn, setLearn] = useState<"idle" | "running" | "done">("idle");
+  const [company, setCompany] = useSetting("workspace.name", "Kesar Foods");
+  const [region, setRegion] = useSetting("workspace.region", "India (Mumbai)");
+  const [, setHomeChannel] = useSetting("workspace.homeChannel", "slack");
+  const [, setGoals] = useSetting("onboarding.goals", "");
+  const connectApp = useApp((s) => s.connectApp);
+  const storeConnections = useApp((s) => s.connections);
+  const updateProfile = useApp((s) => s.updateProfile);
+  const [sources, setSources] = useState<string[]>(LEARN_SOURCES);
 
-  const next = () => setStep((s) => Math.min(s + 1, steps.length - 1));
+  const next = () => {
+    if (step === 1) {
+      setGoals(picked.join("|"));
+      updateProfile({ title: role });
+    }
+    if (step === 2) setHomeChannel(channel);
+    setStep((s) => Math.min(s + 1, steps.length - 1));
+  };
 
   const runLearn = async () => {
     setLearn("running");
@@ -59,14 +77,14 @@ export default function OnboardingPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>Company name</Label>
-                <Input defaultValue="Kesar Foods" />
+                <Input value={company} onChange={(e) => setCompany(e.target.value)} aria-label="Company name" />
               </div>
               <div className="grid gap-1.5">
                 <Label>Data region</Label>
-                <Select defaultValue="in">
-                  <option value="in">🇮🇳 India (Mumbai) — recommended</option>
-                  <option value="eu">🇪🇺 Europe (Frankfurt)</option>
-                  <option value="us">🇺🇸 United States (Virginia)</option>
+                <Select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Data region">
+                  <option value="India (Mumbai)">🇮🇳 India (Mumbai) — recommended</option>
+                  <option value="Europe (Frankfurt)">🇪🇺 Europe (Frankfurt)</option>
+                  <option value="United States (Virginia)">🇺🇸 United States (Virginia)</option>
                 </Select>
                 <p className="flex items-center gap-1 text-[12px] text-muted-foreground">
                   <Lock className="size-3" /> All data is stored and processed in this region. Can’t be changed later.
@@ -151,7 +169,7 @@ export default function OnboardingPage() {
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {suggestedApps.map((a) => {
-                  const done = connected.includes(a);
+                  const done = connected.includes(a) || storeConnections.some((c) => c.appId === a && c.status === "healthy");
                   return (
                     <div key={a} className="flex items-center gap-3 rounded-xl border border-border p-3">
                       <AppLogo appId={a} size={32} />
@@ -172,6 +190,7 @@ export default function OnboardingPage() {
                             setConnecting(a);
                             await sleep(800);
                             setConnected((c) => [...c, a]);
+                            connectApp(a, "workspace");
                             setConnecting(null);
                           }}
                         >
@@ -195,7 +214,7 @@ export default function OnboardingPage() {
               <div className="grid gap-2">
                 {["#general, #finance, #support (last 90 days)", "Google Drive › Policies & SOPs", "HubSpot pipeline stages and owners"].map((s) => (
                   <label key={s} className="flex items-center gap-3 rounded-xl border border-border p-3 text-[13.5px]">
-                    <input type="checkbox" defaultChecked className="size-4 accent-[var(--primary)]" /> {s}
+                    <input type="checkbox" checked={sources.includes(s)} onChange={() => setSources(sources.includes(s) ? sources.filter((x) => x !== s) : [...sources, s])} className="size-4 accent-[var(--primary)]" /> {s}
                   </label>
                 ))}
               </div>

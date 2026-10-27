@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { TemplatesGrid } from "@/components/workers/templates-grid";
 import { AppLogo } from "@/components/brand/app-logo";
 import { useApp } from "@/lib/store";
+import { toast } from "sonner";
+import { blankWorker, guessApps, workerFromDescription, workerFromThread } from "@/components/workers/factory";
+import type { Worker } from "@/lib/types";
 import { cn, sleep } from "@/lib/utils";
 
 type Mode = "describe" | "template" | "chat" | "blank";
@@ -27,28 +30,67 @@ const examples = [
   "When a new lead arrives in HubSpot, research the company, score ICP fit and draft a first email for the owner to approve.",
 ];
 
-const buildSteps = [
-  "Understanding the process",
-  "Choosing apps: WhatsApp, Shopify, Zendesk, Razorpay",
-  "Designing 11-step workflow with 1 approval",
-  "Creating knowledge base slots (policies, FAQs)",
-  "Writing 24 test cases from your description",
-  "Applying workspace policies & budgets",
-];
+const suggestionText: Record<string, string> = {
+  "1": "Auto-reply to “where is my order” questions in #support using Shopify order status and Delhivery tracking. Hand off to a human if the customer is upset.",
+  "2": "Every month on the 14th, reconcile Tally purchases with GSTR-2B, email vendors with missing invoices and post a summary to #finance.",
+  "3": "Every Monday, chase overdue B2B invoices on WhatsApp with a Razorpay UPI pay link; ask for approval before sending to invoices above ₹1 lakh.",
+};
+
+function buildStepsFor(w: Worker | null) {
+  const apps = w?.apps.length ? w.apps.join(", ") : "your apps";
+  const approvals = w?.nodes.filter((n) => n.kind === "approval").length ?? 0;
+  return [
+    "Understanding the process",
+    `Choosing apps: ${apps}`,
+    `Designing ${w?.nodes.length ?? 0}-step workflow with ${approvals} approval${approvals === 1 ? "" : "s"}`,
+    "Creating knowledge base slots",
+    "Writing test cases from your description",
+    "Applying workspace policies & budgets",
+  ];
+}
 
 function NewWorkerInner() {
   const params = useSearchParams();
   const router = useRouter();
   const [mode, setMode] = useState<Mode>((params.get("mode") as Mode) || "describe");
-  const [text, setText] = useState(params.get("from") === "suggestion" ? "Auto-reply to “where is my order” questions in #support using Shopify order status and Delhivery tracking." : "");
+  const [text, setText] = useState(params.get("from") === "suggestion" ? (suggestionText[params.get("s") ?? "1"] ?? suggestionText["1"]) : "");
   const [building, setBuilding] = useState(-1);
+  const [draft, setDraft] = useState<Worker | null>(null);
   const threads = useApp((s) => s.threads);
+  const addWorker = useApp((s) => s.addWorker);
+  const owner = useApp((s) => s.profile.name);
+  const buildSteps = buildStepsFor(draft);
+  const liveApps = guessApps(text);
 
   const generate = async () => {
-    for (let i = 0; i <= buildSteps.length; i++) {
+    const w = workerFromDescription(text, owner);
+    setDraft(w);
+    for (let i = 0; i <= 6; i++) {
       setBuilding(i);
-      await sleep(650);
+      await sleep(550);
     }
+  };
+
+  const openDraft = () => {
+    if (!draft) return;
+    addWorker(draft);
+    toast.success(`Draft “${draft.name}” saved`);
+    router.push(`/workers/${draft.id}?autopilot=1`);
+  };
+
+  const fromThread = (id: string) => {
+    const t = threads.find((x) => x.id === id);
+    if (!t) return;
+    const w = workerFromThread(t, owner);
+    addWorker(w);
+    toast.success(`Compiled “${t.title}” into a Worker`);
+    router.push(`/workers/${w.id}?autopilot=1`);
+  };
+
+  const fromBlank = () => {
+    const w = blankWorker(owner);
+    addWorker(w);
+    router.push(`/workers/${w.id}`);
   };
 
   return (
@@ -87,7 +129,24 @@ function NewWorkerInner() {
               Autopilot
             </Badge>
           </div>
-          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} className="mt-3 text-[14px]" placeholder="What should this Worker do? When should it run? What needs human approval?" />
+          <Textarea
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (building >= 0) {
+                setBuilding(-1);
+                setDraft(null);
+              }
+            }}
+            rows={5} className="mt-3 text-[14px]" placeholder="What should this Worker do? When should it run? What needs human approval?" />
+          {liveApps.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
+              Detected apps:
+              {liveApps.map((a) => (
+                <AppLogo key={a} appId={a} size={18} />
+              ))}
+            </div>
+          )}
           <div className="mt-3 flex flex-col gap-2">
             <p className="text-[12px] text-muted-foreground">Examples</p>
             {examples.map((ex) => (
@@ -111,12 +170,14 @@ function NewWorkerInner() {
               {building >= buildSteps.length && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-1.5">
-                    {["whatsapp", "shopify", "zendesk", "razorpay"].map((a) => (
+                    {draft?.apps.map((a) => (
                       <AppLogo key={a} appId={a} size={22} />
                     ))}
                   </div>
-                  <span className="text-[13px] text-muted-foreground">Draft ready · 11 nodes · 24 tests</span>
-                  <Button className="ml-auto" onClick={() => router.push("/workers/support?autopilot=1")}>
+                  <span className="text-[13px] text-muted-foreground">
+                    “{draft?.name}” · {draft?.nodes.length} steps
+                  </span>
+                  <Button className="ml-auto" onClick={openDraft}>
                     Open draft in Studio
                   </Button>
                 </div>
@@ -136,7 +197,8 @@ function NewWorkerInner() {
 
       {mode === "chat" && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
-          {threads.slice(0, 6).map((t) => (
+          {threads.length === 0 && <p className="p-6 text-center text-[13px] text-muted-foreground">No chats yet — ask Anvita something first.</p>}
+          {threads.slice(0, 10).map((t) => (
             <div key={t.id} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-0">
               <MessageSquare className="size-4 text-muted-foreground" />
               <div className="min-w-0 flex-1">
@@ -145,7 +207,7 @@ function NewWorkerInner() {
                   {t.channelLabel ?? "Web"} · {t.updatedAt}
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => router.push("/workers/growth-report")}>
+              <Button size="sm" variant="outline" onClick={() => fromThread(t.id)}>
                 Compile to Worker
               </Button>
             </div>
@@ -158,7 +220,7 @@ function NewWorkerInner() {
           <PenTool className="size-6 text-primary" />
           <p className="text-[14px] font-medium">Start with an empty canvas</p>
           <p className="max-w-md text-[13px] text-muted-foreground">Drag triggers, agents, tools, code, approvals and sends onto the canvas. Autopilot is always one click away.</p>
-          <Button onClick={() => router.push("/workers/onboarding")}>Open Studio</Button>
+          <Button onClick={fromBlank}>Open Studio</Button>
         </div>
       )}
     </PageContainer>

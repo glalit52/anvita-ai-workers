@@ -1,8 +1,11 @@
 # Anvita AI — Web app
 
 The frontend for Anvita AI: the chat-first AI coworker (Explore) plus the AI Worker Studio
-(Harden → Scale). It runs on realistic mock data, so every journey in `docs/user-journeys.md`
-can be clicked through before the backend exists.
+(Harden → Scale). Every screen in `docs/user-journeys.md` is built and fully interactive:
+everything you create, edit, approve or delete is saved in the browser (localStorage) and
+survives a reload. Data starts from a realistic demo workspace and AI runs are simulated,
+so it works end to end before the backend exists. Settings → Profile → "Reset demo data"
+restores the seed.
 
 ## Run
 
@@ -11,6 +14,18 @@ cd apps/web
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # production build + typecheck
+```
+
+## Tests
+
+End-to-end tests drive the real app in Chromium (Playwright) — 21 scenarios covering every
+page at desktop and mobile width plus the main journeys (ask → connect → approve → save as
+Worker, Studio edits, evals, queue shortcuts, approvals, inbox, knowledge, memory, analytics
+export, members, API keys, policies, Hindi UI, notifications, onboarding).
+
+```bash
+npm run build && npx next start -p 3100 &
+BASE_URL=http://localhost:3100 npm run test:e2e
 ```
 
 ## Stack
@@ -37,7 +52,9 @@ React Flow (`@xyflow/react`) for the Studio canvas · Recharts · Zustand · cmd
 | `/knowledge` | Knowledge bases, sources & sync, retrieval tester with citations | J4 |
 | `/memory` | Workspace & personal memory, skills, skill packs | J2 |
 | `/analytics` | Usage, automation rate, hours saved, unit economics | J9 |
-| `/settings/*` | Members, Security & SSO, Policies, Models, Audit log, Billing, API & MCP | J7, J8, J9 |
+| `/settings/*` | Profile, Members, Security & SSO, Policies (rule builder + generated policy code), Models, Audit log, Billing, API & MCP | J7, J8, J9 |
+| `/notifications` | All notifications, unread filter, mark read | — |
+| `/help` | Searchable help, keyboard shortcuts, contact support | — |
 
 ## Structure
 
@@ -54,11 +71,22 @@ src/
   lib/
     types.ts           domain types (mirror docs/technical-architecture.md §6)
     mock/              mock workspace, apps, workers, approvals…
-    store.ts           Zustand app state (threads, approvals, connections, credits)
+    store.ts           persisted Zustand store for every entity + actions (auto audit-logged)
     simulate.ts        scripted agent run: plan → steps → connect pause → approval → artifact
+    i18n.ts            English / हिन्दी strings for the app shell and Home
+    download.ts        CSV/file export and CSV import helpers
 ```
+
+## What is still simulated
+
+- AI runs (`lib/simulate.ts`) are scripted, not a real model call.
+- Sign-in, OAuth connections, payments and outbound messages are UI-only; nothing leaves the browser.
+- Data is per-browser (localStorage), not shared between users.
+- Hindi covers the navigation, top bar and Home; deeper pages are English.
+- Run history in a Worker's Runs tab is demo data.
 
 ## Next steps
 
-Replace `lib/mock` + `lib/simulate.ts` with the real API (`/v1/runs` streaming over SSE,
-approvals, workers, connections) as the backend services land.
+Replace `lib/store.ts` actions and `lib/simulate.ts` with calls to the real API (`/v1/runs`
+streaming over SSE, approvals, workers, connections) as the backend services land — the
+component layer already talks only to the store.

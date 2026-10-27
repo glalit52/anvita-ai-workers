@@ -1,5 +1,8 @@
 "use client";
-import { Download, ExternalLink, Lock, Share2, X } from "lucide-react";
+import { useRef } from "react";
+import { Download, ExternalLink, Lock, Printer, Share2, X } from "lucide-react";
+import { downloadCSV, downloadFile } from "@/lib/download";
+import { Tooltip as UITooltip } from "@/components/ui/tooltip";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -61,8 +64,8 @@ function PdfPreview() {
   );
 }
 
-function SheetPreview() {
-  const rows = [
+const SHEET_HEAD = ["GSTIN", "Invoice", "ITC (Books)", "ITC (2B)", "Status"];
+const SHEET_ROWS = [
     ["27AABCS1429B1Z5", "SPP/0912", "₹28,117", "₹28,117", "Missing in 2B"],
     ["33AAFCA2290L1Z1", "AS/2231", "₹56,160", "₹54,000", "Amount diff"],
     ["29AAGCK8812Q1Z8", "KCC/771", "₹11,241", "—", "Missing in 2B"],
@@ -70,7 +73,10 @@ function SheetPreview() {
     ["24AADCG1190P1ZT", "GLA/5521", "₹1,51,290", "₹1,51,290", "Matched"],
     ["07AABCC7710R1Z2", "CN/9902", "₹2,232", "₹2,232", "Matched"],
     ["27AAACD6620E1Z9", "DCB/312", "₹17,334", "₹17,000", "Amount diff"],
-  ];
+];
+
+function SheetPreview() {
+  const rows = SHEET_ROWS;
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="flex gap-1 border-b border-border bg-subtle px-2 pt-2 text-[12px]">
@@ -178,6 +184,40 @@ function DocPreview() {
 
 export function ArtifactPanel({ artifact, onClose }: { artifact: Artifact; onClose: () => void }) {
   const url = "kesar.anvita.app/" + artifact.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  const previewRef = useRef<HTMLDivElement>(null);
+  const baseName = artifact.title.replace(/\.[a-z0-9]+$/i, "");
+
+  const snapshot = (print: boolean) => {
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((n) => n.outerHTML)
+      .join("\n");
+    const body = previewRef.current?.innerHTML ?? "";
+    return `<!doctype html><html class="${document.documentElement.className}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${artifact.title}</title>${styles}<style>body{background:var(--background);padding:24px}@media print{body{background:#fff;padding:0}}</style></head><body>${body}${print ? "<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>" : ""}</body></html>`;
+  };
+
+  const openWindow = (print: boolean) => {
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Pop-up blocked — allow pop-ups for Anvita to open previews");
+      return;
+    }
+    w.document.open();
+    w.document.write(snapshot(print));
+    w.document.close();
+  };
+
+  const download = () => {
+    if (artifact.kind === "sheet") {
+      downloadCSV(`${baseName}.csv`, SHEET_ROWS.map((r) => Object.fromEntries(SHEET_HEAD.map((h, i) => [h, r[i]]))), SHEET_HEAD);
+      toast.success(`Downloaded ${baseName}.csv`);
+    } else if (artifact.kind === "pdf" || artifact.kind === "doc") {
+      openWindow(true);
+      toast("Choose “Save as PDF” in the print dialog");
+    } else {
+      downloadFile(`${baseName}.html`, snapshot(false), "text/html;charset=utf-8");
+      toast.success(`Downloaded ${baseName}.html`);
+    }
+  };
   return (
     <div className="flex h-full flex-col bg-sidebar">
       <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3">
@@ -188,22 +228,34 @@ export function ArtifactPanel({ artifact, onClose }: { artifact: Artifact; onClo
         <Badge variant="outline">
           <Lock /> Workspace only
         </Badge>
-        <Button variant="ghost" size="icon-sm" onClick={() => toast.success("Link copied — workspace members can open it")} aria-label="Share">
-          <Share2 />
-        </Button>
-        <Button variant="ghost" size="icon-sm" onClick={() => toast("Download started")} aria-label="Download">
-          <Download />
-        </Button>
-        {(artifact.kind === "dashboard" || artifact.kind === "app") && (
-          <Button variant="ghost" size="icon-sm" aria-label="Open">
+        <UITooltip content="Copy link">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => {
+              navigator.clipboard?.writeText(`https://${url}`).catch(() => {});
+              toast.success("Link copied — workspace members can open it");
+            }}
+            aria-label="Share"
+          >
+            <Share2 />
+          </Button>
+        </UITooltip>
+        <UITooltip content={artifact.kind === "pdf" || artifact.kind === "doc" ? "Download as PDF" : artifact.kind === "sheet" ? "Download CSV" : "Download HTML"}>
+          <Button variant="ghost" size="icon-sm" onClick={download} aria-label="Download">
+            {artifact.kind === "pdf" || artifact.kind === "doc" ? <Printer /> : <Download />}
+          </Button>
+        </UITooltip>
+        <UITooltip content="Open in new tab">
+          <Button variant="ghost" size="icon-sm" aria-label="Open in new tab" onClick={() => openWindow(false)}>
             <ExternalLink />
           </Button>
-        )}
+        </UITooltip>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close preview">
           <X />
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
+      <div ref={previewRef} className="flex-1 overflow-y-auto p-5 scrollbar-thin">
         {artifact.kind === "pdf" && <PdfPreview />}
         {artifact.kind === "sheet" && <SheetPreview />}
         {(artifact.kind === "dashboard" || artifact.kind === "app" || artifact.kind === "chart") && <DashboardPreview url={url} />}

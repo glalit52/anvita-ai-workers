@@ -26,6 +26,7 @@ import {
   Workflow,
   AppWindow,
   X,
+  Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Markdown } from "@/components/ui/markdown";
@@ -166,7 +167,18 @@ function ConnectBlock({ appId, status }: { appId: string; status: "pending" | "c
           >
             {loading ? <Loader2 className="animate-spin" /> : <KeyRound />} Connect with OAuth
           </Button>
-          <Button size="sm" variant="ghost">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={loading}
+            onClick={() => {
+              setLoading(true);
+              setTimeout(() => {
+                connect(appId, "workspace");
+                toast.success(`Using the workspace ${app?.name} account`);
+              }, 600);
+            }}
+          >
             Use shared account
           </Button>
         </div>
@@ -201,17 +213,23 @@ export function ArtifactCard({ artifact }: { artifact: Artifact }) {
 
 function HardenBlock({ threadId, messageId, workerName, status }: { threadId: string; messageId: string; workerName: string; status: "offered" | "saved" | "dismissed" }) {
   const update = useApp((s) => s.updateMessage);
+  const savedWorker = useApp((s) => s.workers.find((w) => w.name === workerName));
   const [open, setOpen] = useState(false);
-  const setStatus = (st: "saved" | "dismissed") => update(threadId, messageId, (m) => patchBlock(m, "harden", (b) => ({ ...b, status: st })));
+  const setStatus = (st: "saved" | "dismissed", name?: string) => update(threadId, messageId, (m) => patchBlock(m, "harden", (b) => ({ ...b, status: st, workerName: name ?? b.workerName })));
   if (status === "dismissed") return null;
   if (status === "saved")
     return (
       <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft/50 px-3.5 py-2.5 text-[13px]">
         <Workflow className="size-4 text-success" />
-        Saved as AI Worker <b>“{workerName}”</b> — runs every Monday 09:00 IST.
-        <Link href="/workers/growth-report" className="ml-auto font-medium text-primary hover:underline">
-          Open in Studio →
-        </Link>
+        <span>
+          Saved as AI Worker <b>“{workerName}”</b>
+          {savedWorker ? ` — ${savedWorker.trigger}.` : " (since deleted)."}
+        </span>
+        {savedWorker && (
+          <Link href={`/workers/${savedWorker.id}`} className="ml-auto shrink-0 font-medium text-primary hover:underline">
+            Open in Studio →
+          </Link>
+        )}
       </div>
     );
   return (
@@ -233,7 +251,7 @@ function HardenBlock({ threadId, messageId, workerName, status }: { threadId: st
           </Button>
         </div>
       </div>
-      <SaveWorkerDialog open={open} onOpenChange={setOpen} defaultName={workerName} onSaved={() => setStatus("saved")} />
+      <SaveWorkerDialog open={open} onOpenChange={setOpen} threadId={threadId} defaultName={workerName} onSaved={(_, name) => setStatus("saved", name)} />
     </div>
   );
 }
@@ -278,12 +296,84 @@ function Block({ block, threadId, messageId, onSuggestion }: { block: ChatBlock;
   }
 }
 
+function Feedback({ message }: { message: ChatMessage }) {
+  const addMemory = useApp((s) => s.addMemory);
+  const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const [correction, setCorrection] = useState("");
+  const [saved, setSaved] = useState(false);
+  const text = message.blocks.map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n\n");
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-0.5 text-muted-foreground">
+        <button
+          aria-label="Good answer"
+          aria-pressed={vote === "up"}
+          title="Good answer"
+          onClick={() => {
+            setVote("up");
+            toast("Thanks — Anvita will keep doing it this way");
+          }}
+          className={cn("rounded-md p-1.5 hover:bg-muted hover:text-foreground cursor-pointer", vote === "up" && "text-success")}
+        >
+          <ThumbsUp className="size-3.5" />
+        </button>
+        <button aria-label="Needs correction" aria-pressed={vote === "down"} title="Needs correction" onClick={() => setVote(vote === "down" ? null : "down")} className={cn("rounded-md p-1.5 hover:bg-muted hover:text-foreground cursor-pointer", vote === "down" && "text-danger")}>
+          <ThumbsDown className="size-3.5" />
+        </button>
+        <button
+          aria-label="Copy"
+          title="Copy"
+          onClick={() => {
+            navigator.clipboard?.writeText(text).catch(() => {});
+            toast("Copied to clipboard");
+          }}
+          className="rounded-md p-1.5 hover:bg-muted hover:text-foreground cursor-pointer"
+        >
+          <Copy className="size-3.5" />
+        </button>
+      </div>
+      {vote === "down" && !saved && (
+        <form
+          className="mt-2 flex max-w-xl gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!correction.trim()) return;
+            addMemory({ scope: "workspace", type: "preference", content: correction.trim() });
+            setSaved(true);
+            toast.success("Saved to memory — Anvita will apply this next time", { action: { label: "View", onClick: () => (window.location.href = "/memory") } });
+          }}
+        >
+          <input autoFocus value={correction} onChange={(e) => setCorrection(e.target.value)} placeholder="What should Anvita do differently? e.g. “Show amounts in lakhs”" aria-label="Correction" className="h-8 flex-1 rounded-lg border border-border bg-card px-2.5 text-[12.5px] outline-none focus:border-ring/60" />
+          <Button size="sm" type="submit" disabled={!correction.trim()}>
+            Remember
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export function Message({ message, threadId, onSuggestion }: { message: ChatMessage; threadId: string; onSuggestion?: (s: string) => void }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end gap-3 animate-fade-in">
-        <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-4 py-2.5 text-[14px] leading-relaxed text-primary-foreground shadow-sm">
-          {message.blocks.map((b, i) => (b.type === "text" ? <p key={i} className="whitespace-pre-wrap">{b.text}</p> : null))}
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+          <div className="rounded-2xl rounded-tr-md bg-primary px-4 py-2.5 text-[14px] leading-relaxed text-primary-foreground shadow-sm">
+            {message.blocks.map((b, i) => (b.type === "text" ? <p key={i} className="whitespace-pre-wrap">{b.text}</p> : null))}
+          </div>
+          {message.blocks.some((b) => b.type === "artifact") && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {message.blocks.map((b, i) =>
+                b.type === "artifact" ? (
+                  <span key={i} className="inline-flex max-w-60 items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[12px]">
+                    <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{b.artifact.title}</span>
+                    {b.artifact.subtitle && <span className="shrink-0 text-muted-foreground">{b.artifact.subtitle}</span>}
+                  </span>
+                ) : null,
+              )}
+            </div>
+          )}
         </div>
         <Avatar name={message.author} size={30} className="mt-0.5" />
       </div>
@@ -312,19 +402,7 @@ export function Message({ message, threadId, onSuggestion }: { message: ChatMess
             <Block key={i} block={b} threadId={threadId} messageId={message.id} onSuggestion={onSuggestion} />
           ))}
         </div>
-        {!message.streaming && message.blocks.length > 0 && (
-          <div className="mt-2 flex items-center gap-0.5 text-muted-foreground">
-            {[
-              { icon: ThumbsUp, label: "Good answer — remember this" },
-              { icon: ThumbsDown, label: "Needs correction" },
-              { icon: Copy, label: "Copy" },
-            ].map(({ icon: Icon, label }) => (
-              <button key={label} aria-label={label} title={label} onClick={() => toast(label === "Copy" ? "Copied" : "Thanks — Anvita will remember this")} className="rounded-md p-1.5 hover:bg-muted hover:text-foreground cursor-pointer">
-                <Icon className="size-3.5" />
-              </button>
-            ))}
-          </div>
-        )}
+        {!message.streaming && message.blocks.length > 0 && <Feedback message={message} />}
       </div>
     </div>
   );

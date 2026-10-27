@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsUpDown, CircleHelp, Plus, Sparkles } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
-import { useApp } from "@/lib/store";
+import { useApp, useSetting } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import { workspace } from "@/lib/mock/workspace";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,8 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const workers = useApp((s) => s.workers);
+  const [wsName] = useSetting("workspace.name", workspace.name);
+  const [wsRegion] = useSetting("workspace.region", workspace.region);
   const t = useT();
   const pinned = workers.filter((w) => w.pinned);
   return (
@@ -61,10 +63,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex w-full items-center gap-2.5 rounded-xl border border-border bg-card px-2.5 py-2 text-left shadow-sm transition-colors hover:bg-subtle cursor-pointer">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 text-sm font-bold text-white">K</span>
+            <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 text-sm font-bold text-white">{(wsName || "W").slice(0, 1).toUpperCase()}</span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold">{workspace.name}</span>
-              <span className="block truncate text-[11.5px] text-muted-foreground">{workspace.plan} · {workspace.region}</span>
+              <span className="block truncate text-[13px] font-semibold">{wsName}</span>
+              <span className="block truncate text-[11.5px] text-muted-foreground">{workspace.plan} · {wsRegion}</span>
             </span>
             <ChevronsUpDown className="size-4 text-muted-foreground" />
           </button>
@@ -73,7 +75,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
           <DropdownMenuItem>
             <span className="flex size-5 items-center justify-center rounded bg-gradient-to-br from-amber-400 to-orange-600 text-[10px] font-bold text-white">K</span>
-            Kesar Foods <span className="ml-auto text-[11px] text-muted-foreground">current</span>
+            {wsName} <span className="ml-auto text-[11px] text-muted-foreground">current</span>
           </DropdownMenuItem>
           <DropdownMenuItem>
             <span className="flex size-5 items-center justify-center rounded bg-gradient-to-br from-sky-400 to-indigo-600 text-[10px] font-bold text-white">K</span>

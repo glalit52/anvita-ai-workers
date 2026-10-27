@@ -1,5 +1,5 @@
 "use client";
-import { MousePointerClick, ShieldCheck, Trash2 } from "lucide-react";
+import { MousePointerClick, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import type { WorkerNode } from "@/lib/types";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AppLogo } from "@/components/brand/app-logo";
 import { apps } from "@/lib/mock/apps";
-import { knowledgeBases } from "@/lib/mock/workspace";
+import { useApp } from "@/lib/store";
 import { nodeMeta } from "./node-meta";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -34,7 +34,12 @@ report = (rev / spend).rename("roas").to_frame()
 files.pdf("Weekly Growth Report.pdf", template="growth", data=report)
 return {"roas": float(rev.sum() / spend.sum()), "cac": ...}`;
 
+const LANGUAGES = ["English", "Hindi", "Tamil", "Telugu", "Kannada", "Marathi", "Bengali", "Gujarati"];
+const DEFAULT_SCHEMA = `{\n  "intent": "order_status | return_refund | product_question | other",\n  "sentiment": "positive | neutral | negative",\n  "order_id": "string?"\n}`;
+
 export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | null; onChange: (id: string, p: Partial<WorkerNode>) => void; onDelete: (id: string) => void }) {
+  const knowledgeBases = useApp((s) => s.knowledgeBases);
+  const members = useApp((s) => s.members);
   if (!node)
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
@@ -44,7 +49,15 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
     );
   const meta = nodeMeta[node.kind];
   const cfg = node.config ?? {};
-  const set = (k: string, v: string | number | boolean) => onChange(node.id, { config: { ...cfg, [k]: v } });
+  const set = (k: string, v: string | number | boolean | string[]) => onChange(node.id, { config: { ...cfg, [k]: v } });
+  const str = (k: string, fallback: string) => (cfg[k] === undefined ? fallback : String(cfg[k]));
+  const list = (k: string, fallback: string[]) => (Array.isArray(cfg[k]) ? (cfg[k] as string[]) : fallback);
+  const toggleIn = (k: string, fallback: string[], v: string) => {
+    const cur = list(k, fallback);
+    set(k, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]);
+  };
+  const tools = list("tools", node.appId ? [node.appId] : []);
+  const rules = list("rules", ["confidence ≥ 0.95", "else"]);
 
   return (
     <div className="flex h-full max-h-[calc(100dvh-180px)] flex-col overflow-y-auto scrollbar-thin">
@@ -71,7 +84,7 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
         {node.kind === "trigger" && (
           <>
             <Field label="Trigger type">
-              <Select defaultValue={String(cfg.cron ? "schedule" : "channel")}>
+              <Select value={str("triggerType", cfg.cron ? "schedule" : "channel")} onChange={(e) => set("triggerType", e.target.value)}>
                 <option value="schedule">Schedule (cron)</option>
                 <option value="channel">Channel message</option>
                 <option value="app_event">App event (webhook)</option>
@@ -79,18 +92,21 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
                 <option value="api">API call</option>
               </Select>
             </Field>
-            {cfg.cron ? (
-              <Field label="Schedule" hint="Runs Mondays at 09:00 Asia/Kolkata">
-                <Input defaultValue={String(cfg.cron)} className="font-mono" />
+            {str("triggerType", cfg.cron ? "schedule" : "channel") === "schedule" ? (
+              <Field label="Schedule (cron)" hint="Timezone: Asia/Kolkata">
+                <Input value={str("cron", "0 9 * * MON")} onChange={(e) => set("cron", e.target.value)} className="font-mono" />
               </Field>
             ) : (
               <Field label="Languages" hint="Auto-detects and replies in the customer's language">
                 <div className="flex flex-wrap gap-1.5">
-                  {["English", "हिन्दी", "தமிழ்", "తెలుగు", "ಕನ್ನಡ", "मराठी"].map((l, i) => (
-                    <Badge key={l} variant={i < 3 ? "primary" : "outline"}>
-                      {l}
-                    </Badge>
-                  ))}
+                  {LANGUAGES.map((l) => {
+                    const on = list("languages", ["English", "Hindi", "Tamil"]).includes(l);
+                    return (
+                      <button key={l} type="button" onClick={() => toggleIn("languages", ["English", "Hindi", "Tamil"], l)} aria-pressed={on} className="cursor-pointer">
+                        <Badge variant={on ? "primary" : "outline"}>{l}</Badge>
+                      </button>
+                    );
+                  })}
                 </div>
               </Field>
             )}
@@ -100,10 +116,10 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
         {node.kind === "agent" && (
           <>
             <Field label="Instructions">
-              <Textarea rows={6} value={String(cfg.instructions ?? "Describe what this step should do, the tone, and what to output.")} onChange={(e) => set("instructions", e.target.value)} />
+              <Textarea rows={6} value={str("instructions", "Describe what this step should do, the tone, and what to output.")} onChange={(e) => set("instructions", e.target.value)} />
             </Field>
             <Field label="Model" hint="AnvitaFusion picks the cheapest model that passes your tests.">
-              <Select value={String(cfg.model ?? "Balanced (Sonnet)")} onChange={(e) => set("model", e.target.value)}>
+              <Select value={str("model", "Balanced (Sonnet)")} onChange={(e) => set("model", e.target.value)}>
                 <option>Auto (AnvitaFusion)</option>
                 <option>Fast (Haiku)</option>
                 <option>Balanced (Sonnet)</option>
@@ -112,16 +128,36 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
             </Field>
             <Field label="Tools this step may use">
               <div className="flex flex-wrap gap-1.5">
-                {["shopify", "zendesk", "razorpay", "web"].map((a) => (
-                  <span key={a} className="inline-flex items-center gap-1.5 rounded-md border border-border px-1.5 py-1 text-[12px]">
-                    <AppLogo appId={a} size={14} /> {apps.find((x) => x.id === a)?.name}
+                {tools.map((a) => (
+                  <span key={a} className="inline-flex items-center gap-1.5 rounded-md border border-border py-1 pl-1.5 pr-1 text-[12px]">
+                    <AppLogo appId={a} size={14} /> {apps.find((x) => x.id === a)?.name ?? a}
+                    <button type="button" onClick={() => set("tools", tools.filter((t) => t !== a))} aria-label={`Remove ${a}`} className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer">
+                      <X className="size-3" />
+                    </button>
                   </span>
                 ))}
-                <button className="rounded-md border border-dashed border-border px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground cursor-pointer">+ Add</button>
+                {tools.length === 0 && <span className="text-[12px] text-muted-foreground">No tools — this step can only reason over its inputs.</span>}
               </div>
+              <Select
+                value=""
+                aria-label="Add a tool"
+                onChange={(e) => {
+                  if (e.target.value) set("tools", [...tools, e.target.value]);
+                }}
+              >
+                <option value="">+ Add a tool…</option>
+                {apps
+                  .filter((a) => !tools.includes(a.id))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+              </Select>
             </Field>
             <Field label="Knowledge">
-              <Select defaultValue={knowledgeBases[0].id}>
+              <Select value={str("kb", "")} onChange={(e) => set("kb", e.target.value)}>
+                <option value="">None</option>
                 {knowledgeBases.map((k) => (
                   <option key={k.id} value={k.id}>
                     {k.name}
@@ -130,7 +166,7 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
               </Select>
             </Field>
             <Field label="Output schema" hint="Validated on every run; retries on mismatch.">
-              <Textarea rows={4} className="font-mono text-[12px]" defaultValue={`{\n  "intent": "order_status | return_refund | product_question | other",\n  "sentiment": "positive | neutral | negative",\n  "order_id": "string?"\n}`} />
+              <Textarea rows={4} className="font-mono text-[12px]" value={str("output", DEFAULT_SCHEMA)} onChange={(e) => set("output", e.target.value)} />
             </Field>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
@@ -145,7 +181,7 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
         {node.kind === "tool" && (
           <>
             <Field label="App">
-              <Select defaultValue={node.appId}>
+              <Select value={node.appId ?? ""} onChange={(e) => onChange(node.id, { appId: e.target.value })}>
                 {apps.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -154,16 +190,21 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
               </Select>
             </Field>
             <Field label="Action">
-              <Input defaultValue={String(cfg.action ?? node.subtitle ?? "")} className="font-mono text-[12.5px]" />
+              <Input value={str("action", node.subtitle ?? "")} onChange={(e) => set("action", e.target.value)} className="font-mono text-[12.5px]" />
+            </Field>
+            <Field label="Side effect">
+              <Select value={str("sideEffect", "none")} onChange={(e) => set("sideEffect", e.target.value)}>
+                <option value="none">None (read-only)</option>
+                <option value="write">Write</option>
+                <option value="external">External (sends/pays)</option>
+              </Select>
             </Field>
             <div className="flex items-start gap-2 rounded-lg bg-primary-soft/50 p-3 text-[12px]">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>
-                Side effect: <b>{String(cfg.sideEffect ?? "none")}</b>. {cfg.sideEffect === "write" ? "Workspace policy may require approval." : "Read-only — allowed by policy “Read-only analytics”."}
-              </span>
+              <span>{str("sideEffect", "none") === "none" ? "Read-only — allowed by policy “Read-only analytics”." : "Workspace policy may require approval before this runs."}</span>
             </div>
             <Field label="Retries">
-              <Select defaultValue="3">
+              <Select value={str("retries", "3")} onChange={(e) => set("retries", e.target.value)}>
                 <option>0</option>
                 <option>1</option>
                 <option>3</option>
@@ -174,28 +215,30 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
         )}
 
         {node.kind === "code" && (
-          <Field label="build_report.py" hint="Frozen from the original run. Runs in your workspace sandbox.">
-            <Textarea rows={14} className="bg-[#0f1020] font-mono text-[11.5px] leading-relaxed text-[#d6d7f5]" defaultValue={sampleCode} />
+          <Field label={str("file", "step.py")} hint="Runs in your workspace sandbox. No AI cost.">
+            <Textarea rows={14} spellCheck={false} className="bg-[#0f1020] font-mono text-[11.5px] leading-relaxed text-[#d6d7f5]" value={str("code", sampleCode)} onChange={(e) => set("code", e.target.value)} />
           </Field>
         )}
 
         {(node.kind === "approval" || node.kind === "handoff") && (
           <>
             <Field label={node.kind === "approval" ? "Approvers" : "Hand off to"}>
-              <Select defaultValue="lead">
-                <option value="lead">Role: Support lead</option>
-                <option value="owner">Role: Owner</option>
-                <option value="finance">Group: Finance</option>
-                <option value="priya">Priya Sharma</option>
+              <Select value={str("approvers", "Role: Support lead")} onChange={(e) => set("approvers", e.target.value)}>
+                <option>Role: Support lead</option>
+                <option>Role: Owner</option>
+                <option>Group: Finance</option>
+                {members.map((m) => (
+                  <option key={m.id}>{m.name}</option>
+                ))}
               </Select>
             </Field>
             {node.kind === "approval" && (
               <Field label="Condition">
-                <Input defaultValue={String(cfg.condition ?? "always")} className="font-mono text-[12.5px]" />
+                <Input value={str("condition", "always")} onChange={(e) => set("condition", e.target.value)} className="font-mono text-[12.5px]" />
               </Field>
             )}
             <Field label="Timeout">
-              <Select defaultValue="4h">
+              <Select value={str("timeout", "4h")} onChange={(e) => set("timeout", e.target.value)}>
                 <option>30m</option>
                 <option>4h</option>
                 <option>24h</option>
@@ -203,7 +246,7 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
               </Select>
             </Field>
             <Field label="On timeout">
-              <Select defaultValue="escalate">
+              <Select value={str("onTimeout", "escalate")} onChange={(e) => set("onTimeout", e.target.value)}>
                 <option value="escalate">Escalate to backup approver</option>
                 <option value="reject">Auto-reject</option>
               </Select>
@@ -212,11 +255,19 @@ export function Inspector({ node, onChange, onDelete }: { node: WorkerNode | nul
         )}
 
         {node.kind === "branch" && (
-          <Field label="Routes">
+          <Field label="Routes" hint="Evaluated top to bottom; the first match wins.">
             <div className="flex flex-col gap-1.5">
-              {((cfg.rules as string[]) ?? ["confidence ≥ 0.95", "else"]).map((r) => (
-                <Input key={r} defaultValue={r} className="font-mono text-[12.5px]" />
+              {rules.map((r, i) => (
+                <div key={i} className="flex gap-1.5">
+                  <Input value={r} onChange={(e) => set("rules", rules.map((x, j) => (j === i ? e.target.value : x)))} className="font-mono text-[12.5px]" />
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove route" onClick={() => set("rules", rules.filter((_, j) => j !== i))}>
+                    <X />
+                  </Button>
+                </div>
               ))}
+              <Button type="button" variant="outline" size="sm" onClick={() => set("rules", [...rules, "new_condition"])}>
+                <Plus /> Add route
+              </Button>
             </div>
           </Field>
         )}

@@ -1,6 +1,6 @@
 import type { Approval } from "@/lib/types";
 
-export function ApprovalPreview({ approval, editable, onBodyChange }: { approval: Approval; editable?: boolean; onBodyChange?: (v: string) => void }) {
+export function ApprovalPreview({ approval, editable, onBodyChange, bodyOverride }: { approval: Approval; editable?: boolean; onBodyChange?: (v: string) => void; bodyOverride?: string }) {
   const p = approval.preview;
   if (p.kind === "email") {
     return (
@@ -22,9 +22,9 @@ export function ApprovalPreview({ approval, editable, onBodyChange }: { approval
           </div>
         </div>
         {editable ? (
-          <textarea defaultValue={p.body} onChange={(e) => onBodyChange?.(e.target.value)} rows={8} className="block w-full resize-y bg-card px-3.5 py-3 leading-relaxed outline-none" />
+          <textarea aria-label="Email body" defaultValue={bodyOverride ?? p.body} onChange={(e) => onBodyChange?.(e.target.value)} rows={8} className="block w-full resize-y bg-card px-3.5 py-3 leading-relaxed outline-none" />
         ) : (
-          <p className="whitespace-pre-line px-3.5 py-3 leading-relaxed">{p.body}</p>
+          <p className="whitespace-pre-line px-3.5 py-3 leading-relaxed">{bodyOverride ?? p.body}</p>
         )}
       </div>
     );

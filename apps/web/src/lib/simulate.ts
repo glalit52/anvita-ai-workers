@@ -31,9 +31,10 @@ function artifactFor(text: string): Artifact | null {
   return null;
 }
 
-export async function runAgent(threadId: string, text: string) {
+export async function runAgent(threadId: string, text: string, extras?: { attachments?: Artifact[]; web?: boolean }) {
+  const attachments = extras?.attachments ?? [];
   const s = useApp.getState();
-  s.pushMessage(threadId, { id: crypto.randomUUID(), role: "user", author: "Priya Sharma", time: now(), blocks: [{ type: "text", text }] });
+  s.pushMessage(threadId, { id: crypto.randomUUID(), role: "user", author: s.profile.name, time: now(), blocks: [{ type: "text", text }, ...attachments.map((a) => ({ type: "artifact" as const, artifact: a }))] });
   s.updateThread(threadId, { status: "running" });
 
   const assistantId = crypto.randomUUID();
@@ -44,11 +45,13 @@ export async function runAgent(threadId: string, text: string) {
   await sleep(700);
 
   const matched = keywordApps.filter(([re]) => re.test(text));
-  const apps = (matched.length ? matched : [keywordApps[7]]).slice(0, 3);
+  let apps = (matched.length ? matched : attachments.length ? [] : [keywordApps[7]]).slice(0, 3);
+  if (extras?.web && !apps.some(([, a]) => a === "web")) apps = [...apps.slice(0, 2), keywordApps[7]];
   const art = artifactFor(text);
   const needsApproval = /\b(email|send|post|share with|refund|whatsapp them|message them)/i.test(text);
 
   const planSteps = [
+    ...(attachments.length ? [`Read ${attachments.length} attached file${attachments.length > 1 ? "s" : ""}`] : []),
     ...apps.map(([, appId]) => `Get data from ${appById[appId]?.name ?? appId}`),
     "Analyse it in my computer (Python)",
     art ? `Build the ${{ pdf: "PDF report", sheet: "spreadsheet", chart: "chart", dashboard: "live dashboard", doc: "draft", app: "mini app" }[art.kind]}` : "Write up the answer",
@@ -59,6 +62,7 @@ export async function runAgent(threadId: string, text: string) {
   await sleep(600);
 
   const steps: RunStep[] = [
+    ...(attachments.length ? [{ id: "files", label: `Read ${attachments.map((a) => a.title).join(", ").slice(0, 60)}`, kind: "kb" as const, status: "pending" as const }] : []),
     ...apps.map(([, appId, label], i) => ({ id: `s${i}`, label, kind: "tool" as const, appId, status: "pending" as const })),
     { id: "code", label: "Analysed data", kind: "code", appId: "sandbox", status: "pending" },
     { id: "llm", label: art ? `Built ${art.title}` : "Wrote the answer", kind: "llm", status: "pending" },
@@ -81,7 +85,7 @@ export async function runAgent(threadId: string, text: string) {
     const dur = step.kind === "code" ? 2200 : 1200 + Math.random() * 800;
     await sleep(dur);
     const credits = step.kind === "code" ? 180 : step.kind === "llm" ? 140 : 30;
-    const details: Record<string, string> = { tool: `${Math.floor(20 + Math.random() * 400)} records`, code: "analysis.py · 0.8s CPU", llm: art?.subtitle ?? "Summary with sources" };
+    const details: Record<string, string> = { tool: `${Math.floor(20 + Math.random() * 400)} records`, code: "analysis.py · 0.8s CPU", kb: "parsed & indexed", llm: art?.subtitle ?? "Summary with sources" };
     update((m) => patchStep(m, step.id, { status: "done", durationMs: Math.round(dur), credits, detail: step.detail ?? details[step.kind] }));
     useApp.getState().addCredits(credits);
   }
@@ -92,7 +96,7 @@ export async function runAgent(threadId: string, text: string) {
     type: "text",
     text: `Done. Here's what I found:\n\n• **Top insight:** the last 7 days are up 12% vs the previous week, driven mostly by Tamil Nadu and Karnataka.\n• **Watch out:** 3 items look unusual — I've flagged them in the ${art ? "file" : "notes below"}.\n• **Next step:** I can keep tracking this and alert you if it moves more than 10%.`,
   });
-  append({ type: "sources", sources: apps.map(([, appId, label]) => ({ title: label, appId })) });
+  if (apps.length) append({ type: "sources", sources: apps.map(([, appId, label]) => ({ title: label, appId })) });
 
   if (needsApproval) {
     const approvalId = `ap-${Math.random().toString(36).slice(2, 7)}`;

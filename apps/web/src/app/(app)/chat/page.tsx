@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { AppWindow, FileSpreadsheet, FileText, LayoutDashboard, Mail, Search } from "lucide-react";
-import { Composer } from "@/components/chat/composer";
+import { Composer, type ComposerExtras } from "@/components/chat/composer";
 import { LogoMark } from "@/components/brand/logo";
 import { useApp } from "@/lib/store";
 import { runAgent } from "@/lib/simulate";
@@ -18,9 +18,10 @@ const capabilities = [
 export default function NewChatPage() {
   const router = useRouter();
   const createThread = useApp((s) => s.createThread);
-  const ask = (text: string) => {
+  const connected = useApp((s) => s.connections.filter((c) => c.status === "healthy").length);
+  const ask = (text: string, extras?: ComposerExtras) => {
     const id = createThread(text.length > 48 ? text.slice(0, 46) + "…" : text);
-    runAgent(id, text);
+    runAgent(id, text, extras);
     router.push(`/chat/${id}`);
   };
   return (
@@ -30,7 +31,7 @@ export default function NewChatPage() {
           <LogoMark size={44} />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight">What can I do for you?</h1>
           <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-            I can use your 15 connected apps, run code on my own computer and deliver finished files, dashboards and apps.
+            I can use your {connected} connected apps, run code on my own computer and deliver finished files, dashboards and apps.
           </p>
         </div>
         <Composer className="mt-6" size="lg" onSubmit={ask} autoFocus />

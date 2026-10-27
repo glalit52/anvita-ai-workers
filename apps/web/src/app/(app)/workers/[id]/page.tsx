@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, BookOpen, FlaskConical, GitBranch, History, Inbox, LayoutGrid, Pause, Play, Rocket, Settings, Share2, ShieldCheck, Sparkles, Workflow } from "lucide-react";
-import { workerById } from "@/lib/mock/workers";
-import { useApp } from "@/lib/store";
+import { ArrowLeft, BookOpen, FlaskConical, GitBranch, History, Inbox, LayoutGrid, Pause, Pin, PinOff, Play, Rocket, Settings, Share2, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { useApp, useWorker } from "@/lib/store";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useHydrated } from "@/components/workers/use-hydrated";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/misc";
@@ -30,15 +32,25 @@ type TabId = (typeof tabs)[number]["id"];
 function WorkerStudio() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  const worker = workerById[id];
-  const status = useApp((s) => s.workerStatus[id]);
+  const worker = useWorker(id);
   const setStatus = useApp((s) => s.setWorkerStatus);
-  const [tab, setTab] = useState<TabId>("build");
+  const updateWorker = useApp((s) => s.updateWorker);
+  const pendingQueue = useApp((s) => s.queueItems.filter((q) => q.status === "needs_review").length);
+  const [tab, setTab] = useState<TabId>((params.get("tab") as TabId) || "build");
+  const status = worker?.status;
+  const hydrated = useHydrated();
+
+  if (!hydrated)
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+      </div>
+    );
 
   if (!worker)
     return (
       <div className="p-10">
-        <EmptyState icon={<Workflow />} title="Worker not found" description="It may have been deleted." action={<Button asChild size="sm"><Link href="/workers">Back to Workers</Link></Button>} />
+        <EmptyState icon={<Workflow />} title="Worker not found" description="It may have been deleted, or the link is from another workspace." action={<Button asChild size="sm"><Link href="/workers">Back to Workers</Link></Button>} />
       </div>
     );
 
@@ -59,7 +71,7 @@ function WorkerStudio() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-[17px] font-semibold tracking-tight">{worker.name}</h1>
               <WorkerStatusBadge status={status ?? worker.status} />
-              <Badge variant="outline">v{worker.version} · draft v{worker.version + 1}</Badge>
+              <Badge variant="outline">{worker.version > 0 ? `v${worker.version} · draft v${worker.version + 1}` : "Unpublished draft"}</Badge>
               <InteractionBadge type={worker.interaction} />
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
@@ -72,16 +84,39 @@ function WorkerStudio() {
             {worker.interaction === "queue" && (
               <Button asChild size="sm" variant="outline">
                 <Link href={`/workers/${worker.id}/queue`}>
-                  <Inbox /> Work queue <Badge variant="saffron">2</Badge>
+                  <Inbox /> Work queue {pendingQueue > 0 && <Badge variant="saffron">{pendingQueue}</Badge>}
                 </Link>
               </Button>
             )}
-            <Button size="sm" variant="ghost" aria-label="Share">
-              <Share2 />
-            </Button>
+            <Tooltip content={worker.pinned ? "Unpin from sidebar" : "Pin to sidebar"}>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={worker.pinned ? "Unpin" : "Pin"}
+                onClick={() => {
+                  updateWorker(worker.id, { pinned: !worker.pinned });
+                  toast(worker.pinned ? "Unpinned from sidebar" : "Pinned to sidebar");
+                }}
+              >
+                {worker.pinned ? <PinOff /> : <Pin />}
+              </Button>
+            </Tooltip>
+            <Tooltip content="Copy link">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Share"
+                onClick={() => {
+                  navigator.clipboard?.writeText(window.location.origin + `/workers/${worker.id}`).catch(() => {});
+                  toast.success("Link copied — workspace members with access can open it");
+                }}
+              >
+                <Share2 />
+              </Button>
+            </Tooltip>
             {status === "paused" || status === "draft" ? (
-              <Button size="sm" variant="outline" onClick={() => { setStatus(worker.id, "live"); toast.success(`${worker.name} is live`); }}>
-                <Play /> Resume
+              <Button size="sm" variant="outline" onClick={() => { setStatus(worker.id, "live"); if (worker.version === 0) updateWorker(worker.id, { version: 1 }); toast.success(`${worker.name} is live`); }}>
+                <Play /> {status === "draft" ? "Go live" : "Resume"}
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={() => { setStatus(worker.id, "paused"); toast(`${worker.name} paused — triggers will queue`); }}>
@@ -115,11 +150,11 @@ function WorkerStudio() {
         </div>
       </div>
       <div className={cn("min-h-0 flex-1", tab === "build" ? "" : "overflow-y-auto")}>
-        {tab === "build" && <Builder worker={worker} />}
+        {tab === "build" && <Builder key={worker.id} worker={worker} />}
         {tab === "overview" && <OverviewTab worker={worker} />}
         {tab === "test" && <TestTab worker={worker} />}
         {tab === "runs" && <RunsTab worker={worker} />}
-        {tab === "knowledge" && <KnowledgeTab />}
+        {tab === "knowledge" && <KnowledgeTab worker={worker} />}
         {tab === "access" && <AccessTab worker={worker} />}
         {tab === "versions" && <VersionsTab worker={worker} />}
         {tab === "settings" && <SettingsTab worker={worker} />}

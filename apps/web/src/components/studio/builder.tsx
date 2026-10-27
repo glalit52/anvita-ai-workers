@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addEdge,
   Background,
@@ -18,6 +18,7 @@ import { PanelLeftClose, PanelLeftOpen, Play, Sparkles } from "lucide-react";
 import type { NodeKind, Worker, WorkerNode } from "@/lib/types";
 import { cn, sleep } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useApp } from "@/lib/store";
 import { WorkerFlowNode, type FlowNode } from "./flow-node";
 import { nodeMeta, paletteKinds } from "./node-meta";
 import { Inspector } from "./inspector";
@@ -52,8 +53,30 @@ export function Builder({ worker }: { worker: Worker }) {
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [panel, setPanel] = useState<"autopilot" | "inspector">("autopilot");
   const [simulating, setSimulating] = useState(false);
+  const simulatingRef = useRef(false);
 
   const selected = nodes.find((n) => n.id === selectedId)?.data.node ?? null;
+  const updateWorker = useApp((s) => s.updateWorker);
+  const [saved, setSaved] = useState<"saved" | "saving">("saved");
+  const firstRun = useRef(true);
+
+  // Persist graph edits (debounced) so they survive reloads.
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    if (simulatingRef.current) return;
+    setSaved("saving");
+    const t = setTimeout(() => {
+      updateWorker(worker.id, {
+        nodes: nodes.map((n) => ({ ...n.data.node, x: Math.round(n.position.x), y: Math.round(n.position.y) })),
+        edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: typeof e.label === "string" ? e.label : undefined })),
+      });
+      setSaved("saved");
+    }, 600);
+    return () => clearTimeout(t);
+  }, [nodes, edges, updateWorker, worker.id]);
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 1.6 } }, eds)),
@@ -81,6 +104,8 @@ export function Builder({ worker }: { worker: Worker }) {
   };
 
   const simulate = async () => {
+    if (nodes.length === 0) return;
+    simulatingRef.current = true;
     setSimulating(true);
     const order = [...nodes].sort((a, b) => a.position.y - b.position.y);
     for (const n of order) {
@@ -92,6 +117,7 @@ export function Builder({ worker }: { worker: Worker }) {
     await sleep(1600);
     setNodes((ns) => ns.map((x) => ({ ...x, data: { ...x.data, status: undefined } })));
     setSimulating(false);
+    setTimeout(() => (simulatingRef.current = false), 700);
   };
 
   return (
@@ -138,6 +164,14 @@ export function Builder({ worker }: { worker: Worker }) {
             setPanel("inspector");
           }}
           onPaneClick={() => setSelectedId(null)}
+          onNodesDelete={(deleted) => {
+            if (deleted.some((d) => d.id === selectedId)) {
+              setSelectedId(null);
+              setPanel("autopilot");
+            }
+            toast(`Removed ${deleted.length} step${deleted.length > 1 ? "s" : ""}`);
+          }}
+          deleteKeyCode={["Delete", "Backspace"]}
           fitView
           fitViewOptions={{ padding: 0.15 }}
           proOptions={{ hideAttribution: true }}
@@ -154,9 +188,14 @@ export function Builder({ worker }: { worker: Worker }) {
           <Button size="sm" variant="outline" className="shadow-soft lg:hidden" onClick={() => addNode("agent")}>
             + Step
           </Button>
+          {selectedId && (
+            <Button size="sm" variant="outline" className="shadow-soft" onClick={() => deleteNode(selectedId)}>
+              Delete step
+            </Button>
+          )}
         </div>
         <div className="absolute right-3 top-3 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11.5px] text-muted-foreground shadow-soft">
-          {nodes.length} steps · {edges.length} connections · autosaved
+          {nodes.length} steps · {edges.length} connections · {saved === "saving" ? "saving…" : "saved"}
         </div>
       </div>
 
