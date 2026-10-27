@@ -61,6 +61,7 @@ const simple = (appA: string, titleA: string, appB: string, titleB: string, trig
 export const workers: Worker[] = [
   {
     id: "support",
+    pinned: true,
     name: "Customer Support",
     description: "Answers order, return and product questions on WhatsApp and the web widget in English, Hindi and Tamil. Issues refunds within policy.",
     emoji: "💬",
@@ -84,6 +85,7 @@ export const workers: Worker[] = [
   },
   {
     id: "growth-report",
+    pinned: true,
     name: "Weekly Growth Report",
     description: "Pulls Meta + Google Ads and HubSpot every Monday, builds a PDF with charts and posts an executive summary to #growth.",
     emoji: "📈",
@@ -106,6 +108,7 @@ export const workers: Worker[] = [
   },
   {
     id: "invoices",
+    pinned: true,
     name: "Invoice Processing",
     description: "Reads vendor invoices from email and Drive, extracts GST fields, matches to POs and posts vouchers in Tally. Low-confidence items go to review.",
     emoji: "🧾",

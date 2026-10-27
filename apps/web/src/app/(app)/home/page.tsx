@@ -12,7 +12,9 @@ import { Stat, StatusDot } from "@/components/ui/misc";
 import { AppLogo, AppStack } from "@/components/brand/app-logo";
 import { useApp } from "@/lib/store";
 import { runAgent } from "@/lib/simulate";
-import { workers, runs } from "@/lib/mock/workers";
+import { runs } from "@/lib/mock/workers";
+import { useT, type TKey } from "@/lib/i18n";
+import { toast } from "sonner";
 import { inbox, usageDaily } from "@/lib/mock/workspace";
 import { formatCredits } from "@/lib/utils";
 
@@ -29,9 +31,9 @@ const suggestions = [
   { id: 3, title: "Chase overdue B2B invoices on WhatsApp", evidence: "₹18.4L overdue > 30 days across 22 corporate clients in Tally", apps: ["tally", "whatsapp", "razorpay"], saving: "₹ cash-flow" },
 ];
 
-function greeting() {
+function greetingKey(): TKey {
   const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  return h < 12 ? "home.greeting.morning" : h < 17 ? "home.greeting.afternoon" : "home.greeting.evening";
 }
 
 export default function HomePage() {
@@ -39,7 +41,14 @@ export default function HomePage() {
   const createThread = useApp((s) => s.createThread);
   const allApprovals = useApp((s) => s.approvals);
   const approvals = allApprovals.filter((a) => a.status === "pending");
-  const status = useApp((s) => s.workerStatus);
+  const workers = useApp((s) => s.workers);
+  const dismissed = useApp((s) => s.dismissedSuggestions);
+  const dismiss = useApp((s) => s.dismissSuggestion);
+  const inboxState = useApp((s) => s.inboxState);
+  const firstName = useApp((s) => s.profile.name.split(" ")[0]);
+  const t = useT();
+  const visibleSuggestions = suggestions.filter((s) => !dismissed.includes(s.id));
+  const openHandoffs = inbox.filter((c) => !inboxState[c.id]?.resolved);
 
   const ask = (text: string) => {
     const id = createThread(text.length > 48 ? text.slice(0, 46) + "…" : text);
@@ -54,9 +63,9 @@ export default function HomePage() {
         <div className="pointer-events-none absolute -bottom-24 left-1/3 size-60 rounded-full bg-saffron/15 blur-3xl" />
         <div className="relative mx-auto max-w-3xl">
           <p className="text-[13px] font-medium text-muted-foreground" suppressHydrationWarning>
-            {greeting()}, Priya 👋
+            {t(greetingKey())}, {firstName} 👋
           </p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-balance md:text-[30px]">What should Anvita take off your plate today?</h1>
+          <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-balance md:text-[30px]">{t("home.title")}</h1>
           <Composer className="mt-5" size="lg" onSubmit={ask} autoFocus />
           <div className="mt-3 flex flex-wrap gap-2">
             {quickPrompts.map((p) => (
@@ -79,12 +88,12 @@ export default function HomePage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between">
             <div>
-              <CardTitle>Needs your attention</CardTitle>
-              <p className="text-[12.5px] text-muted-foreground">Approvals, handoffs and issues waiting on people</p>
+              <CardTitle>{t("home.attention")}</CardTitle>
+              <p className="text-[12.5px] text-muted-foreground">{t("home.attention.sub")}</p>
             </div>
             <Button asChild variant="ghost" size="sm">
               <Link href="/approvals">
-                View all <ArrowRight />
+                {t("common.viewAll")} <ArrowRight />
               </Link>
             </Button>
           </CardHeader>
@@ -102,7 +111,7 @@ export default function HomePage() {
                 <Badge variant="saffron">Approve</Badge>
               </Link>
             ))}
-            {inbox.slice(0, 1).map((c) => (
+            {openHandoffs.slice(0, 1).map((c) => (
               <Link key={c.id} href="/inbox" className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-subtle">
                 <span className="flex size-8 items-center justify-center rounded-lg bg-info-soft text-info">
                   <Headset className="size-4" />
@@ -156,7 +165,7 @@ export default function HomePage() {
               {[
                 { icon: Zap, label: "Avg. task", value: "38 s" },
                 { icon: Clock, label: "Approval wait", value: "11 min" },
-                { icon: Workflow, label: "Live Workers", value: "4" },
+                { icon: Workflow, label: "Live Workers", value: String(workers.filter((w) => w.status === "live" || w.status === "canary").length) },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="rounded-xl bg-muted/60 py-2">
                   <Icon className="mx-auto size-4 text-muted-foreground" />
@@ -172,11 +181,12 @@ export default function HomePage() {
       <section id="suggestions" className="mt-6 scroll-mt-20">
         <div className="mb-3 flex items-center gap-2">
           <Lightbulb className="size-4 text-saffron" />
-          <h2 className="text-[15px] font-semibold">Anvita noticed repeated work</h2>
-          <Badge variant="saffron">3 new</Badge>
+          <h2 className="text-[15px] font-semibold">{t("home.suggestions")}</h2>
+          {visibleSuggestions.length > 0 && <Badge variant="saffron">{visibleSuggestions.length} new</Badge>}
         </div>
         <div className="grid gap-3 md:grid-cols-3">
-          {suggestions.map((s) => (
+          {visibleSuggestions.length === 0 && <p className="text-[13px] text-muted-foreground md:col-span-3">You're all caught up — Anvita will suggest more automations as it notices repeated work.</p>}
+          {visibleSuggestions.map((s) => (
             <Card key={s.id} className="flex flex-col p-4">
               <div className="flex items-center justify-between">
                 <AppStack apps={s.apps} size={22} />
@@ -186,12 +196,19 @@ export default function HomePage() {
               <p className="mt-1 flex-1 text-[12.5px] text-muted-foreground">{s.evidence}</p>
               <div className="mt-4 flex gap-2">
                 <Button asChild size="sm" className="flex-1">
-                  <Link href="/workers/new?from=suggestion">
-                    <Sparkles /> Automate it
+                  <Link href={`/workers/new?from=suggestion&s=${s.id}`}>
+                    <Sparkles /> {t("home.automate")}
                   </Link>
                 </Button>
-                <Button size="sm" variant="ghost">
-                  Not now
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    dismiss(s.id);
+                    toast("Suggestion dismissed — Anvita won't suggest it again");
+                  }}
+                >
+                  {t("home.notnow")}
                 </Button>
               </div>
             </Card>
@@ -225,7 +242,7 @@ export default function HomePage() {
                   <p className="text-[13px] font-medium tabular-nums">{w.runs30d.toLocaleString("en-IN")}</p>
                   <p className="text-[11px] text-muted-foreground">runs / 30d</p>
                 </div>
-                <StatusDot tone={status[w.id] === "live" ? "success" : status[w.id] === "canary" ? "warning" : "muted"} pulse={status[w.id] === "live"} />
+                <StatusDot tone={w.status === "live" ? "success" : w.status === "canary" ? "warning" : "muted"} pulse={w.status === "live"} />
               </Link>
             ))}
           </CardContent>

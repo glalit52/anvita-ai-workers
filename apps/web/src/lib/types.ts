@@ -171,6 +171,7 @@ export interface Worker {
   hoursSaved30d: number;
   lastRun: string;
   createdFrom?: "template" | "run" | "autopilot" | "scratch";
+  pinned?: boolean;
   nodes: WorkerNode[];
   edges: WorkerEdge[];
 }
@@ -277,4 +278,60 @@ export interface RunRecord {
   duration: string;
   credits: number;
   steps: number;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: string;
+  createdAt: string;
+  lastUsed: string;
+  revoked?: boolean;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+}
+
+export interface AppNotification {
+  id: string;
+  appId: string;
+  title: string;
+  meta: string;
+  href: string;
+  read: boolean;
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  url: string;
+  auth: "oauth" | "bearer" | "none";
+  tools: number;
+  status: "healthy" | "error";
+}
+
+export interface Profile {
+  name: string;
+  email: string;
+  title: string;
+  language: "en" | "hi";
+  timezone: string;
+  approvalChannel: "slack" | "whatsapp" | "email";
+  digest: "daily" | "weekly" | "off";
+  quietHours: boolean;
+}
+
+export interface EvalCase {
+  id: string;
+  input: string;
+  expected: string;
+  category: string;
+  score: number;
+  pass: boolean;
+  ms: number;
 }

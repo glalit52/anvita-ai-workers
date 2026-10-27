@@ -5,7 +5,6 @@ import { Command } from "cmdk";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowRight, MessageSquare, Plus, Sparkles } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { workers } from "@/lib/mock/workers";
 import { apps } from "@/lib/mock/apps";
 import { AppLogo } from "@/components/brand/app-logo";
 import { buildNav, mainNav, settingsNav } from "./nav";
@@ -18,6 +17,7 @@ export function CommandPalette() {
   const open = useApp((s) => s.commandOpen);
   const setOpen = useApp((s) => s.setCommandOpen);
   const threads = useApp((s) => s.threads);
+  const workers = useApp((s) => s.workers);
   const router = useRouter();
 
   useEffect(() => {

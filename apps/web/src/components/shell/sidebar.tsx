@@ -4,19 +4,27 @@ import { usePathname } from "next/navigation";
 import { ChevronsUpDown, CircleHelp, Plus, Sparkles } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { useApp } from "@/lib/store";
-import { workers } from "@/lib/mock/workers";
+import { useT } from "@/lib/i18n";
 import { workspace } from "@/lib/mock/workspace";
-import { inbox } from "@/lib/mock/workspace";
 import { cn } from "@/lib/utils";
 import { buildNav, mainNav, settingsNav, type NavItem } from "./nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown";
 import { StatusDot } from "@/components/ui/misc";
 
+import { inbox as seedInbox } from "@/lib/mock/workspace";
+import type { InboxState } from "@/lib/store";
+
+function inboxCount(state: InboxState) {
+  return seedInbox.filter((c) => !state[c.id]?.resolved).length;
+}
+
 function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   const pathname = usePathname();
   const pending = useApp((s) => s.approvals.filter((a) => a.status === "pending").length);
+  const handoffs = useApp((s) => inboxCount(s.inboxState));
+  const t = useT();
   const active = pathname === item.href || pathname.startsWith(item.href + "/") || (item.href.startsWith("/settings") && pathname.startsWith("/settings"));
-  const badge = item.badge === "approvals" ? pending : item.badge === "inbox" ? inbox.length : 0;
+  const badge = item.badge === "approvals" ? pending : item.badge === "inbox" ? handoffs : 0;
   const Icon = item.icon;
   return (
     <Link
@@ -28,7 +36,7 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
       )}
     >
       <Icon className={cn("size-[17px]", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
-      <span className="flex-1">{item.label}</span>
+      <span className="flex-1">{t(item.tkey)}</span>
       {badge > 0 && (
         <span className={cn("rounded-full px-1.5 text-[11px] font-semibold tabular-nums", item.badge === "approvals" ? "bg-saffron text-white" : "bg-primary text-primary-foreground")}>
           {badge}
@@ -39,8 +47,9 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const status = useApp((s) => s.workerStatus);
-  const pinned = workers.filter((w) => ["support", "growth-report", "invoices"].includes(w.id));
+  const workers = useApp((s) => s.workers);
+  const t = useT();
+  const pinned = workers.filter((w) => w.pinned);
   return (
     <aside className="flex h-full w-full flex-col gap-4 bg-sidebar px-3 py-3">
       <div className="flex items-center justify-between px-1">
@@ -84,7 +93,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div>
-        <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">Build</p>
+        <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">{t("nav.build")}</p>
         <nav className="flex flex-col gap-0.5">
           {buildNav.map((i) => (
             <NavLink key={i.href} item={i} onNavigate={onNavigate} />
@@ -94,7 +103,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div>
         <div className="flex items-center justify-between px-2.5 pb-1">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">Pinned Workers</p>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">{t("nav.pinned")}</p>
           <Link href="/workers/new" onClick={onNavigate} className="rounded p-0.5 text-muted-foreground hover:bg-card hover:text-foreground" aria-label="New worker">
             <Plus className="size-3.5" />
           </Link>
@@ -104,7 +113,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <Link key={w.id} href={`/workers/${w.id}`} onClick={onNavigate} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:bg-card hover:text-foreground">
               <span className="text-[15px] leading-none">{w.emoji}</span>
               <span className="flex-1 truncate">{w.name}</span>
-              <StatusDot tone={status[w.id] === "live" ? "success" : status[w.id] === "canary" ? "warning" : "muted"} />
+              <StatusDot tone={w.status === "live" ? "success" : w.status === "canary" ? "warning" : "muted"} />
             </Link>
           ))}
         </div>
@@ -113,18 +122,18 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mt-auto flex flex-col gap-2">
         <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
           <div className="flex items-center gap-2 text-[13px] font-medium">
-            <Sparkles className="size-4 text-saffron" /> 3 automations suggested
+            <Sparkles className="size-4 text-saffron" /> {t("suggestions.card")}
           </div>
-          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">Anvita noticed repeated work in #finance and #support.</p>
+          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{t("suggestions.cardSub")}</p>
           <Link href="/home#suggestions" onClick={onNavigate} className="mt-2 inline-block text-[12px] font-medium text-primary hover:underline">
-            Review suggestions →
+            {t("suggestions.review")}
           </Link>
         </div>
         <nav className="flex flex-col gap-0.5">
           <NavLink item={settingsNav} onNavigate={onNavigate} />
-          <a href="#" className="flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] font-medium text-muted-foreground hover:bg-card hover:text-foreground">
-            <CircleHelp className="size-[17px]" /> Help & docs
-          </a>
+          <Link href="/help" onClick={onNavigate} className="flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] font-medium text-muted-foreground hover:bg-card hover:text-foreground">
+            <CircleHelp className="size-[17px]" /> {t("nav.help")}
+          </Link>
         </nav>
       </div>
     </aside>

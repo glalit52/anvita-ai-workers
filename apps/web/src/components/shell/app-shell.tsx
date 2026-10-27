@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { CommandPalette } from "./command-palette";
+import { ConfirmHost } from "@/components/ui/confirm";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -26,6 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">{children}</main>
       </div>
       <CommandPalette />
+      <ConfirmHost />
     </div>
   );
 }
