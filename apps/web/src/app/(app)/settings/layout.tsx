@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, CreditCard, KeyRound, ScrollText, Shield, ShieldCheck, Users } from "lucide-react";
+import { Bell, Brain, CircleUser, CreditCard, KeyRound, ScrollText, Shield, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
+  { href: "/settings/profile", label: "Profile", icon: CircleUser },
   { href: "/settings/members", label: "Members & roles", icon: Users },
   { href: "/settings/security", label: "Security & SSO", icon: Shield },
   { href: "/settings/policies", label: "Policies & approvals", icon: ShieldCheck },
@@ -12,6 +13,7 @@ const items = [
   { href: "/settings/audit", label: "Audit log", icon: ScrollText },
   { href: "/settings/billing", label: "Billing & usage", icon: CreditCard },
   { href: "/settings/developers", label: "API & MCP", icon: KeyRound },
+  { href: "/notifications", label: "Notifications", icon: Bell },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

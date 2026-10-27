@@ -345,6 +345,9 @@ export const useApp = create<Data & Actions>()(
 );
 
 /** Persisted key/value for simple settings forms. */
+type Widen<T> = T extends string ? string : T extends number ? number : T extends boolean ? boolean : T;
+
+export function useSetting<T extends string | number | boolean>(key: string, fallback: T): [Widen<T>, (v: Widen<T>) => void];
 export function useSetting<T extends string | number | boolean>(key: string, fallback: T): [T, (v: T) => void] {
   const value = useApp((s) => s.settings[key]) as T | undefined;
   const setSetting = useApp((s) => s.setSetting);
