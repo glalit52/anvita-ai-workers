@@ -3,6 +3,8 @@ import { appById } from "./mock/apps";
 import { patchBlock, patchStep, useApp, waitFor } from "./store";
 import type { Artifact, ChatBlock, RunStep } from "./types";
 import { sleep } from "./utils";
+import { isLive } from "./api";
+import { liveRunAgent } from "./backend";
 
 const keywordApps: [RegExp, string, string][] = [
   [/\b(ads?|roas|cac|meta|campaign)/i, "metaads", "Fetched Meta Ads insights"],
@@ -32,6 +34,8 @@ function artifactFor(text: string): Artifact | null {
 }
 
 export async function runAgent(threadId: string, text: string, extras?: { attachments?: Artifact[]; web?: boolean }) {
+  // Live mode: the backend runs the agent and streams the result back over SSE.
+  if (isLive()) return liveRunAgent(threadId, text, extras);
   const attachments = extras?.attachments ?? [];
   const s = useApp.getState();
   s.pushMessage(threadId, { id: crypto.randomUUID(), role: "user", author: s.profile.name, time: now(), blocks: [{ type: "text", text }, ...attachments.map((a) => ({ type: "artifact" as const, artifact: a }))] });

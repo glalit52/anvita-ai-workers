@@ -12,10 +12,11 @@ import { Stat, StatusDot } from "@/components/ui/misc";
 import { AppLogo, AppStack } from "@/components/brand/app-logo";
 import { useApp } from "@/lib/store";
 import { runAgent } from "@/lib/simulate";
-import { runs } from "@/lib/mock/workers";
 import { useT, type TKey } from "@/lib/i18n";
 import { toast } from "sonner";
-import { inbox, usageDaily } from "@/lib/mock/workspace";
+import { usageDaily } from "@/lib/mock/workspace";
+import { useEffect, useState } from "react";
+import { get, isLive } from "@/lib/api";
 import { formatCredits } from "@/lib/utils";
 
 const quickPrompts = [
@@ -45,6 +46,9 @@ export default function HomePage() {
   const dismissed = useApp((s) => s.dismissedSuggestions);
   const dismiss = useApp((s) => s.dismissSuggestion);
   const inboxState = useApp((s) => s.inboxState);
+  const inbox = useApp((s) => s.inbox);
+  const runs = useApp((s) => s.runs);
+  const usage = useDailyRuns();
   const firstName = useApp((s) => s.profile.name.split(" ")[0]);
   const t = useT();
   const visibleSuggestions = suggestions.filter((s) => !dismissed.includes(s.id));
@@ -148,7 +152,7 @@ export default function HomePage() {
           <CardContent>
             <div className="h-40">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={usageDaily} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                <AreaChart data={usage} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
                   <defs>
                     <linearGradient id="runsFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
@@ -271,4 +275,25 @@ export default function HomePage() {
       </div>
     </PageContainer>
   );
+}
+
+/** Runs per day for the last 30 days: live from analytics, or the demo series. */
+function useDailyRuns() {
+  const [data, setData] = useState<{ day: string; runs: number }[]>(isLive() ? [] : usageDaily);
+  useEffect(() => {
+    if (!isLive()) return;
+    get<{ byDay: { day: string; runs: number }[] }>("/analytics/overview?days=30")
+      .then((r) => {
+        const byDay = new Map(r.byDay.map((d) => [d.day, d.runs]));
+        setData(
+          Array.from({ length: 30 }, (_, i) => {
+            const d = new Date(Date.now() - (29 - i) * 86400_000);
+            const key = d.toISOString().slice(0, 10);
+            return { day: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }), runs: byDay.get(key) ?? 0 };
+          }),
+        );
+      })
+      .catch(() => {});
+  }, []);
+  return data;
 }

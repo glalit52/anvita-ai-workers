@@ -10,11 +10,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { useApp } from "@/lib/store";
-import { workspace } from "@/lib/mock/workspace";
 import { formatCredits } from "@/lib/utils";
 import { AppLogo } from "@/components/brand/app-logo";
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
+  const workspace = useApp((s) => s.workspaceInfo);
   const { setTheme, theme } = useTheme();
   const creditsUsed = useApp((s) => s.creditsUsed);
   const creditsTotal = useApp((s) => s.creditsTotal);
@@ -159,7 +159,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/login">
+              <Link href="/login?signout=1">
                 <LogOut /> Sign out
               </Link>
             </DropdownMenuItem>

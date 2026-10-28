@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { SectionHeader, SettingRow } from "@/components/settings-section";
 import { Field } from "@/components/settings/field";
 import { useApp, useSetting } from "@/lib/store";
-import { workspace } from "@/lib/mock/workspace";
 import { downloadFile } from "@/lib/download";
 import { cn, formatCredits, sleep } from "@/lib/utils";
 
@@ -143,6 +142,7 @@ function PaymentDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenCh
 }
 
 export default function BillingPage() {
+  const workspace = useApp((s) => s.workspaceInfo);
   const used = useApp((s) => s.creditsUsed);
   const total = useApp((s) => s.creditsTotal);
   const log = useApp((s) => s.log);

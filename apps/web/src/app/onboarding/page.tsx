@@ -34,7 +34,7 @@ export default function OnboardingPage() {
   const [connected, setConnected] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [learn, setLearn] = useState<"idle" | "running" | "done">("idle");
-  const [company, setCompany] = useSetting("workspace.name", "Kesar Foods");
+  const [company, setCompany] = useSetting("workspace.name", useApp.getState().workspaceInfo.name || "Kesar Foods");
   const [region, setRegion] = useSetting("workspace.region", "India (Mumbai)");
   const [, setHomeChannel] = useSetting("workspace.homeChannel", "slack");
   const [, setGoals] = useSetting("onboarding.goals", "");
