@@ -49,8 +49,13 @@ test("chat: connect card pauses the run, connecting resumes it, history persists
   await page.waitForURL(/\/chat\/t-/);
   await page.getByText("Connect Google Analytics to continue").waitFor({ timeout: 15000 });
   await page.getByRole("button", { name: /Connect with OAuth/ }).click();
+  // No Google OAuth app on this server and GA4 has no API-key option → sample data.
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText(/realistic sample data/).waitFor();
+  await dialog.getByRole("button", { name: "Use sample data" }).click();
   await page.getByText("Google Analytics connected").first().waitFor({ timeout: 15000 });
   await page.getByText(/Done\. Here's what I found/).waitFor({ timeout: 20000 });
+  await page.getByText(/demo data/).first().waitFor();
 
   await page.reload({ waitUntil: "networkidle" });
   await page.getByText(/Done\. Here's what I found/).waitFor({ timeout: 10000 });

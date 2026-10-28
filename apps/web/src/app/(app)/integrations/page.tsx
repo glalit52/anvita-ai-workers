@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { isLive, post } from "@/lib/api";
+import { load } from "@/lib/backend";
 import { toast } from "sonner";
 import { Check, ChevronRight, Code2, Plug, Plus, RefreshCw, Search, Server, Trash2, TriangleAlert } from "lucide-react";
 import { PageContainer } from "@/components/shell/app-shell";
@@ -82,6 +84,8 @@ export default function IntegrationsPage() {
                       <Badge variant="outline" className="capitalize">
                         {c.scope}
                       </Badge>
+                      {c.mode === "demo" && !["web", "sandbox"].includes(c.appId) && <Badge variant="default">Sample data</Badge>}
+                      {c.mode === "live" && c.account && <span className="truncate text-[11.5px] text-muted-foreground">{c.account}</span>}
                     </div>
                     <p className="truncate text-[12px] text-muted-foreground">
                       {c.connectedBy} · {c.actionsUsed30d.toLocaleString("en-IN")} actions / 30d
@@ -135,11 +139,31 @@ export default function IntegrationsPage() {
                   <Badge variant="outline">{isApi ? "OpenAPI" : "MCP"}</Badge>
                 </div>
                 <p className="truncate font-mono text-[11.5px] text-muted-foreground">{m.url}</p>
+                {m.status !== "healthy" && m.lastError && <p className="truncate text-[11.5px] text-danger">{m.lastError}</p>}
               </div>
               <span className="text-[12px] text-muted-foreground">
                 {m.tools} tools · {m.auth === "none" ? "no auth" : m.auth}
               </span>
               <Badge variant={m.status === "healthy" ? "success" : "danger"}>{m.status === "healthy" ? "Healthy" : "Error"}</Badge>
+              {isLive() && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Re-check ${m.name}`}
+                  onClick={async () => {
+                    try {
+                      const r = await post<{ status: string; tools: number; lastError?: string }>(`/mcp-servers/${m.id}/check`);
+                      await load.mcp();
+                      if (r.status === "healthy") toast.success(`${m.name}: ${r.tools} tools`);
+                      else toast.error(r.lastError ?? "Server unreachable");
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Check failed");
+                    }
+                  }}
+                >
+                  <RefreshCw />
+                </Button>
+              )}
               <Button
                 size="icon-sm"
                 variant="ghost"

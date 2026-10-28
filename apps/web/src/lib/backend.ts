@@ -71,7 +71,7 @@ type S = Record<string, any>;
 const mapMessage = (m: S): ChatMessage => ({ id: m.id, role: m.role, author: m.author, time: hhmm(m.time), blocks: m.blocks ?? [], streaming: m.streaming || undefined });
 const mapThread = (t: S, messages: ChatMessage[] = []): Thread => ({ id: t.id, title: t.title, channel: t.channel, channelLabel: t.channelLabel, updatedAt: rel(t.updatedAt), pinned: t.pinned || undefined, unread: t.unread || undefined, status: t.status, messages });
 const mapApproval = (a: S): Approval => ({ ...(a as Approval), createdAt: rel(a.createdAt) });
-const mapConnection = (c: S): Connection => ({ appId: c.appId, scope: c.scope, connectedBy: c.connectedBy, connectedAt: shortDate(c.connectedAt), status: c.status, sharedWith: c.sharedWith, actionsUsed30d: c.actionsUsed30d });
+const mapConnection = (c: S): Connection => ({ appId: c.appId, scope: c.scope, connectedBy: c.connectedBy, connectedAt: shortDate(c.connectedAt), status: c.status, sharedWith: c.sharedWith, actionsUsed30d: c.actionsUsed30d, mode: c.mode, account: c.account, statusDetail: c.statusDetail });
 const mapWorker = (w: S): Worker => ({ ...(w as Worker), lastRun: rel(w.lastRun) });
 const mapMember = (m: S): Member => ({ id: m.id, name: m.name, email: m.email, role: m.role, status: m.status, lastActive: rel(m.lastActive), sso: m.sso });
 const mapKb = (k: S): KnowledgeBase => ({ ...(k as KnowledgeBase), updatedAt: rel(k.updatedAt), sources: (k.sources ?? []).map((s: S) => ({ ...s, lastSync: s.status === "syncing" ? "syncing…" : rel(s.lastSync) })) });
@@ -126,6 +126,10 @@ export const load = {
   },
   async connections() {
     set({ connections: (await get("/connections")).data.map(mapConnection) });
+  },
+  async apps() {
+    const r = await get("/apps");
+    set({ appAuth: Object.fromEntries((r.data as S[]).map((a) => [a.id, a.auth])) });
   },
   async mcp() {
     set({ mcpServers: (await get("/mcp-servers")).data as McpServer[] });
@@ -195,7 +199,7 @@ export async function loadThread(id: string) {
 
 /** Load everything the screens need. Order matters only where a slice depends on workers. */
 export async function hydrate() {
-  await Promise.all([load.workspace(), load.me(), load.threads(), load.approvals(), load.connections(), load.mcp(), load.workers(), load.members(), load.policies(), load.knowledge(), load.memories(), load.skills(), load.developers(), load.notifications(), load.audit(), load.inbox()]);
+  await Promise.all([load.workspace(), load.me(), load.apps(), load.threads(), load.approvals(), load.connections(), load.mcp(), load.workers(), load.members(), load.policies(), load.knowledge(), load.memories(), load.skills(), load.developers(), load.notifications(), load.audit(), load.inbox()]);
   await Promise.all([load.runs(), load.queues(), load.evals()]);
   set({ liveReady: true });
 }
@@ -291,7 +295,7 @@ export function installLiveActions() {
     },
     addMcpServer: (s) => {
       orig.addMcpServer(s);
-      void sync(() => post("/mcp-servers", { name: s.name, url: s.url, auth: s.auth }).then(load.mcp), load.mcp);
+      void sync(() => post("/mcp-servers", { name: s.name, url: s.url, auth: s.auth, token: (s as { token?: string }).token }).then(load.mcp), load.mcp);
     },
     removeMcpServer: (id) => {
       orig.removeMcpServer(id);

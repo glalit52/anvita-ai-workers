@@ -7,7 +7,7 @@ import { Loader2, Mail, Smartphone } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { isLive, login, logout, signup } from "@/lib/api";
+import { API_URL, get, isLive, login, logout, signup } from "@/lib/api";
 import { useApp } from "@/lib/store";
 
 function GoogleIcon() {
@@ -47,9 +47,24 @@ function LoginInner() {
     }
   }, [live, params]);
 
+  const [sso, setSso] = useState<{ google: boolean; microsoft: boolean } | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    get<{ google: boolean; microsoft: boolean }>("/auth/sso/providers").then(setSso).catch(() => setSso({ google: false, microsoft: false }));
+    const err = params.get("sso_error");
+    if (err) setError(err);
+  }, [live, params]);
+
   const go = (which: string) => {
     if (live && which !== "otp") {
-      toast.message("Single sign-on isn't enabled for this workspace yet — use your email and password.");
+      const provider = which === "ms" ? "microsoft" : "google";
+      if (!sso?.[provider]) {
+        toast.message(`${provider === "google" ? "Google" : "Microsoft"} sign-in isn't set up on this server — use your email and password.`);
+        return;
+      }
+      setLoading(which);
+      const next = params.get("next");
+      window.location.assign(`${API_URL}/v1/auth/sso/${provider}/start?redirect=${encodeURIComponent(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home")}`);
       return;
     }
     setLoading(which);

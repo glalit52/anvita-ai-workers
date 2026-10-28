@@ -7,6 +7,7 @@ import type {
   Approval,
   AuditEvent,
   ChatBlock,
+  AppAuth,
   ChatMessage,
   Connection,
   RunRecord,
@@ -70,6 +71,8 @@ interface Data {
   runs: RunRecord[];
   /** Live mode: true once the workspace has been loaded from the API. */
   liveReady: boolean;
+  /** Live mode: how each app can be connected. */
+  appAuth: Record<string, AppAuth>;
 }
 
 export interface WorkspaceInfo {
@@ -173,6 +176,7 @@ const liveSeed = (): Data => ({
   inbox: [],
   runs: [],
   liveReady: false,
+  appAuth: {},
 });
 
 const seed = (): Data => isLive() ? liveSeed() : ({
@@ -203,6 +207,7 @@ const seed = (): Data => isLive() ? liveSeed() : ({
   inbox: seedInbox,
   runs: seedRuns,
   liveReady: false,
+  appAuth: {},
 });
 
 const waiters = new Map<string, () => void>();

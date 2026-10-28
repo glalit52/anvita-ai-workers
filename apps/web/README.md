@@ -54,14 +54,25 @@ How it works:
   notifications, connections, queue and inbox update live. Snapshot loads never overwrite newer
   pushed updates.
 - `src/components/live-sync.tsx` — guards signed-in routes and starts the sync.
-- Real email + password sign-in/sign-up (`/login`), invite acceptance (`/invite/[token]`),
-  file uploads to chat and knowledge bases.
+- Real email + password sign-in/sign-up (`/login`), Google/Microsoft single sign-on
+  (`/auth/callback` receives the session), invite acceptance (`/invite/[token]`), file uploads to
+  chat and knowledge bases.
+- **Integrations:** the connect dialog (Integrations, chat connect cards, onboarding) offers
+  "Sign in with <app>" (OAuth, when the server has that app's client configured), an API-key form
+  verified live by the server, or sample data. Connections show live/sample status, the connected
+  account and health, with a Test button and the Slack/WhatsApp webhook URLs to paste into those
+  apps. MCP servers are connected for real and their tools discovered.
+- **Billing:** credit packs priced by the server; pay with Razorpay Checkout (in-page) or Stripe
+  Checkout (redirect); payment history from the API. Without a payment provider, admins record
+  manual top-ups.
+- **Analytics:** daily usage, per-person and per-Worker breakdowns from the API.
 
 Screens read from the same store in both modes, so no page needs to know which mode it is in.
-The Analytics page's team breakdowns are still sample data in live mode.
+Importing an OpenAPI spec is demo-only for now (add internal APIs as MCP servers instead).
 
-Live end-to-end tests (6 journeys: auth guard and sign-in/out, UI sign-up, connect card →
-resume, approve → send, Studio edits saved to the server, memory/members/API keys):
+Live end-to-end tests (10 journeys: auth guard and sign-in/out, UI sign-up, connect card →
+resume, approve → send, Studio edits saved to the server, memory/members/API keys, API-key and
+sample-data connections, MCP server → agent tool call, billing top-up, SSO landing + analytics):
 
 ```bash
 # backend on :4000 with CORS_ORIGINS=http://localhost:3100 and AUTH_RATE_LIMIT_PER_MINUTE=1000

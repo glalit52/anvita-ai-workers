@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { getSession, isLive } from "@/lib/api";
 import { connectEvents, disconnectEvents, flushBufferedEvents, hydrate, installLiveActions } from "@/lib/backend";
 import { useApp } from "@/lib/store";
+import { appById } from "@/lib/mock/apps";
 
-const PUBLIC = [/^\/$/, /^\/login/, /^\/invite\//];
+const PUBLIC = [/^\/$/, /^\/login/, /^\/invite\//, /^\/auth\//];
 let installed = false;
 
 function userOf(jwt: string) {
@@ -62,6 +63,21 @@ export function LiveSync() {
         toast.error(`Couldn't load your workspace: ${e.message}`);
       });
   }, [pathname, router]);
+
+  // Results of redirects back from OAuth providers.
+  useEffect(() => {
+    if (!isLive()) return;
+    const q = new URLSearchParams(window.location.search);
+    const connected = q.get("connected");
+    const error = q.get("connect_error");
+    if (!connected && !error) return;
+    if (connected) toast.success(`${appById[connected]?.name ?? connected} connected — using your live account`);
+    if (error) toast.error(`Couldn't connect ${appById[q.get("app") ?? ""]?.name ?? "the app"}: ${error}`);
+    q.delete("connected");
+    q.delete("connect_error");
+    q.delete("app");
+    window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}`);
+  }, [pathname]);
 
   useEffect(() => () => disconnectEvents(), []);
   return null;
