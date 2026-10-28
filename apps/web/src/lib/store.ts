@@ -7,8 +7,10 @@ import type {
   Approval,
   AuditEvent,
   ChatBlock,
+  AppAuth,
   ChatMessage,
   Connection,
+  RunRecord,
   EvalCase,
   InboxConversation,
   KnowledgeBase,
@@ -26,7 +28,8 @@ import type {
 } from "./types";
 import { approvals as seedApprovals, auditEvents as seedAudit, inbox as seedInbox, knowledgeBases as seedKbs, members as seedMembers, memories as seedMemories, policies as seedPolicies, skills as seedSkills, threads as seedThreads, workspace } from "./mock/workspace";
 import { connections as seedConnections } from "./mock/apps";
-import { queueItems as seedQueue, workers as seedWorkers } from "./mock/workers";
+import { queueItems as seedQueue, runs as seedRuns, workers as seedWorkers } from "./mock/workers";
+import { clientId, isLive } from "./api";
 import { seedApiKeys, seedEvalCases, seedMcpServers, seedNotifications, seedProfile, seedWebhooks } from "./mock/extra";
 
 type Decision = "approved" | "rejected";
@@ -63,6 +66,21 @@ interface Data {
   dismissedSuggestions: number[];
   settings: Record<string, string | number | boolean>;
   profile: Profile;
+  workspaceInfo: WorkspaceInfo;
+  inbox: InboxConversation[];
+  runs: RunRecord[];
+  /** Live mode: true once the workspace has been loaded from the API. */
+  liveReady: boolean;
+  /** Live mode: how each app can be connected. */
+  appAuth: Record<string, AppAuth>;
+}
+
+export interface WorkspaceInfo {
+  name: string;
+  plan: string;
+  region: string;
+  renewsOn: string;
+  role?: string;
 }
 
 interface Actions {
@@ -100,7 +118,8 @@ interface Actions {
   addPolicy: (p: Omit<Policy, "id" | "hits30d">) => void;
   updatePolicy: (id: string, patch: Partial<Policy>) => void;
   removePolicy: (id: string) => void;
-  createApiKey: (name: string, scope: string) => string;
+  /** Returns the secret (a promise in live mode, where the server mints it). */
+  createApiKey: (name: string, scope: string) => string | Promise<string>;
   revokeApiKey: (id: string) => void;
   addWebhook: (w: Omit<Webhook, "id">) => void;
   removeWebhook: (id: string) => void;
@@ -126,7 +145,41 @@ interface Actions {
   resetDemo: () => void;
 }
 
-const seed = (): Data => ({
+const emptyProfile: Profile = { name: "", email: "", title: "", language: "en", timezone: "Asia/Kolkata", approvalChannel: "email", digest: "daily", quietHours: false };
+
+/** Live mode starts empty and is filled from the API; demo mode starts from the mock workspace. */
+const liveSeed = (): Data => ({
+  threads: [],
+  approvals: [],
+  connections: [],
+  workers: [],
+  creditsUsed: 0,
+  creditsTotal: 0,
+  members: [],
+  policies: [],
+  knowledgeBases: [],
+  memories: [],
+  skills: [],
+  installedPacks: [],
+  apiKeys: [],
+  webhooks: [],
+  notifications: [],
+  mcpServers: [],
+  auditEvents: [],
+  queueItems: [],
+  inboxState: {},
+  evalCases: {},
+  dismissedSuggestions: [],
+  settings: {},
+  profile: emptyProfile,
+  workspaceInfo: { name: "", plan: "", region: "", renewsOn: "—" },
+  inbox: [],
+  runs: [],
+  liveReady: false,
+  appAuth: {},
+});
+
+const seed = (): Data => isLive() ? liveSeed() : ({
   threads: seedThreads,
   approvals: seedApprovals,
   connections: seedConnections,
@@ -150,6 +203,11 @@ const seed = (): Data => ({
   dismissedSuggestions: [],
   settings: {},
   profile: seedProfile,
+  workspaceInfo: { name: workspace.name, plan: workspace.plan, region: workspace.region, renewsOn: workspace.renewsOn },
+  inbox: seedInbox,
+  runs: seedRuns,
+  liveReady: false,
+  appAuth: {},
 });
 
 const waiters = new Map<string, () => void>();
@@ -176,7 +234,7 @@ export const useApp = create<Data & Actions>()(
         setCommandOpen: (open) => set({ commandOpen: open }),
 
         createThread: (title) => {
-          const id = `t-${uid()}`;
+          const id = clientId("t");
           set((s) => ({ threads: [{ id, title, channel: "web", updatedAt: "now", status: "running", messages: [] }, ...s.threads] }));
           return id;
         },
@@ -230,7 +288,7 @@ export const useApp = create<Data & Actions>()(
         duplicateWorker: (id) => {
           const w = get().workers.find((x) => x.id === id);
           if (!w) return null;
-          const copy: Worker = { ...w, id: uid("w-"), name: `${w.name} (copy)`, status: "draft", version: 0, runs30d: 0, hoursSaved30d: 0, successRate: 0, lastRun: "—", owner: get().profile.name };
+          const copy: Worker = { ...w, id: clientId("w"), name: `${w.name} (copy)`, status: "draft", version: 0, runs30d: 0, hoursSaved30d: 0, successRate: 0, lastRun: "—", owner: get().profile.name };
           get().addWorker(copy);
           return copy.id;
         },
@@ -287,7 +345,7 @@ export const useApp = create<Data & Actions>()(
         removeWebhook: (id) => set((s) => ({ webhooks: s.webhooks.filter((w) => w.id !== id) })),
 
         addKnowledgeBase: (kb) => {
-          const id = uid("kb-");
+          const id = clientId("kb");
           set((s) => ({ knowledgeBases: [...s.knowledgeBases, { ...kb, id, sources: [], docs: 0, chunks: 0, usedBy: [], updatedAt: "just now" }] }));
           log("kb.created", kb.name);
           return id;
@@ -323,12 +381,15 @@ export const useApp = create<Data & Actions>()(
       };
     },
     {
-      name: "anvita-demo-v1",
+      // Live data comes from the API, so only UI preferences are cached locally in live mode.
+      name: isLive() ? "anvita-live-prefs-v1" : "anvita-demo-v1",
       version: 1,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       partialize: (s) => {
-        const { commandOpen: _c, ...rest } = s;
+        if (isLive()) return { dismissedSuggestions: s.dismissedSuggestions } as Partial<Data>;
+        const { commandOpen: _c, liveReady: _l, ...rest } = s;
+        void _l;
         void _c;
         return Object.fromEntries(Object.entries(rest).filter(([, v]) => typeof v !== "function")) as Partial<Data>;
       },

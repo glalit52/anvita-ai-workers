@@ -1,11 +1,14 @@
 "use client";
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail, Smartphone } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { API_URL, get, isLive, login, logout, signup } from "@/lib/api";
+import { useApp } from "@/lib/store";
 
 function GoogleIcon() {
   return (
@@ -33,9 +36,55 @@ function LoginInner() {
   const [method, setMethod] = useState<"email" | "phone">("email");
   const [loading, setLoading] = useState<string | null>(null);
 
+  const live = isLive();
+  const [form, setForm] = useState({ name: "", email: "", password: "", workspaceName: "" });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (live && params.get("signout")) {
+      void logout();
+      useApp.setState({ liveReady: false });
+    }
+  }, [live, params]);
+
+  const [sso, setSso] = useState<{ google: boolean; microsoft: boolean } | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    get<{ google: boolean; microsoft: boolean }>("/auth/sso/providers").then(setSso).catch(() => setSso({ google: false, microsoft: false }));
+    const err = params.get("sso_error");
+    if (err) setError(err);
+  }, [live, params]);
+
   const go = (which: string) => {
+    if (live && which !== "otp") {
+      const provider = which === "ms" ? "microsoft" : "google";
+      if (!sso?.[provider]) {
+        toast.message(`${provider === "google" ? "Google" : "Microsoft"} sign-in isn't set up on this server — use your email and password.`);
+        return;
+      }
+      setLoading(which);
+      const next = params.get("next");
+      window.location.assign(`${API_URL}/v1/auth/sso/${provider}/start?redirect=${encodeURIComponent(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home")}`);
+      return;
+    }
     setLoading(which);
     setTimeout(() => router.push(mode === "signup" ? "/onboarding" : "/home"), 800);
+  };
+
+  /** Live mode: real email + password auth against the API. */
+  const submitLive = async () => {
+    setError(null);
+    setLoading("otp");
+    try {
+      if (mode === "signup") await signup({ name: form.name.trim(), email: form.email.trim(), password: form.password, workspaceName: form.workspaceName.trim() || `${form.name.trim().split(" ")[0]}'s workspace` });
+      else await login(form.email.trim(), form.password);
+      useApp.setState({ liveReady: false });
+      const next = params.get("next");
+      router.push(mode === "signup" ? "/onboarding" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+      setLoading(null);
+    }
   };
 
   return (
@@ -61,6 +110,42 @@ function LoginInner() {
             <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
           </div>
 
+          {live ? (
+            <form
+              className="grid gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitLive();
+              }}
+            >
+              {mode === "signup" && (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="name">Your name</Label>
+                    <Input id="name" autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="workspace">Company / workspace name</Label>
+                    <Input id="workspace" autoComplete="organization" value={form.workspaceName} onChange={(e) => setForm({ ...form, workspaceName: e.target.value })} placeholder="e.g. Kesar Foods" />
+                  </div>
+                </>
+              )}
+              <div className="grid gap-1.5">
+                <Label htmlFor="email">Work email</Label>
+                <Input id="email" type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={mode === "signup" ? 10 : 1} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+                {mode === "signup" && <p className="text-[11.5px] text-muted-foreground">At least 10 characters.</p>}
+              </div>
+              {error && <p role="alert" className="text-[12.5px] text-danger">{error}</p>}
+              <Button type="submit" size="lg" disabled={!!loading}>
+                {loading === "otp" && <Loader2 className="animate-spin" />} {mode === "signup" ? "Create workspace" : "Sign in"}
+              </Button>
+            </form>
+          ) : (
+          <>
           <div className="mb-3 inline-flex rounded-lg bg-muted p-0.5 text-[12.5px]">
             {[
               { v: "email" as const, l: "Work email", i: Mail },
@@ -97,6 +182,8 @@ function LoginInner() {
               {loading === "otp" && <Loader2 className="animate-spin" />} {method === "email" ? "Send magic link" : "Send code"}
             </Button>
           </form>
+          </>
+          )}
 
           <p className="mt-6 text-center text-[13px] text-muted-foreground">
             {mode === "signup" ? "Already have an account? " : "New to Anvita? "}

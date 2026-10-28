@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Bot, CheckCircle2, ExternalLink, Globe, Headset, Phone, RotateCcw, Send, Sparkles, StickyNote, UserRound, Workflow } from "lucide-react";
-import { inbox } from "@/lib/mock/workspace";
 import { useApp, nowTime } from "@/lib/store";
 import { AppLogo } from "@/components/brand/app-logo";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +31,7 @@ function ChannelIcon({ c, size = 30 }: { c: InboxConversation; size?: number }) 
 }
 
 export default function InboxPage() {
+  const inbox = useApp((s) => s.inbox);
   const state = useApp((s) => s.inboxState);
   const updateInbox = useApp((s) => s.updateInbox);
   const log = useApp((s) => s.log);
@@ -40,7 +40,7 @@ export default function InboxPage() {
   const open = inbox.filter((c) => !state[c.id]?.resolved);
   const resolved = inbox.filter((c) => state[c.id]?.resolved);
   const list = view === "open" ? open : resolved;
-  const [selected, setSelected] = useState(inbox[0].id);
+  const [selected, setSelected] = useState(inbox[0]?.id ?? "");
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const c = list.find((x) => x.id === selected) ?? list[0];

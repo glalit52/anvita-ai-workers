@@ -79,8 +79,13 @@ function CreateKeyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                 e.preventDefault();
                 setTouched(true);
                 if (!name.trim()) return;
-                setSecret(createKey(name.trim(), scope));
-                toast.success("API key created");
+                Promise.resolve(createKey(name.trim(), scope)).then(
+                  (secret) => {
+                    setSecret(secret);
+                    toast.success("API key created");
+                  },
+                  () => {}, // the store already reported the error
+                );
               }}
             >
               <Field label="Name" error={touched && !name.trim() ? "Name the key so you can recognise it later" : undefined}>

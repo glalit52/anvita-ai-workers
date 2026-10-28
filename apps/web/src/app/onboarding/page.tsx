@@ -7,6 +7,8 @@ import { AppLogo } from "@/components/brand/app-logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { isLive } from "@/lib/api";
+import { ConnectDialog } from "@/components/integrations/dialogs";
 import { appById } from "@/lib/mock/apps";
 import { cn, sleep } from "@/lib/utils";
 import { useApp, useSetting } from "@/lib/store";
@@ -34,11 +36,12 @@ export default function OnboardingPage() {
   const [connected, setConnected] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [learn, setLearn] = useState<"idle" | "running" | "done">("idle");
-  const [company, setCompany] = useSetting("workspace.name", "Kesar Foods");
+  const [company, setCompany] = useSetting("workspace.name", useApp.getState().workspaceInfo.name || "Kesar Foods");
   const [region, setRegion] = useSetting("workspace.region", "India (Mumbai)");
   const [, setHomeChannel] = useSetting("workspace.homeChannel", "slack");
   const [, setGoals] = useSetting("onboarding.goals", "");
   const connectApp = useApp((s) => s.connectApp);
+  const [dialogApp, setDialogApp] = useState<string | null>(null);
   const storeConnections = useApp((s) => s.connections);
   const updateProfile = useApp((s) => s.updateProfile);
   const [sources, setSources] = useState<string[]>(LEARN_SOURCES);
@@ -187,6 +190,8 @@ export default function OnboardingPage() {
                           variant="outline"
                           disabled={connecting === a}
                           onClick={async () => {
+                            // Live: the real connect flow (OAuth comes back here, API keys are verified).
+                            if (isLive()) return setDialogApp(a);
                             setConnecting(a);
                             await sleep(800);
                             setConnected((c) => [...c, a]);
@@ -202,6 +207,7 @@ export default function OnboardingPage() {
                 })}
               </div>
               <p className="text-[12.5px] text-muted-foreground">{connected.length} connected · 3,000+ more in Integrations</p>
+              <ConnectDialog app={dialogApp ? (appById[dialogApp] ?? null) : null} onClose={() => setDialogApp(null)} returnTo="/onboarding" />
             </div>
           )}
 

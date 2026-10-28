@@ -5,23 +5,21 @@ import { ChevronsUpDown, CircleHelp, Plus, Sparkles } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { useApp, useSetting } from "@/lib/store";
 import { useT } from "@/lib/i18n";
-import { workspace } from "@/lib/mock/workspace";
 import { cn } from "@/lib/utils";
 import { buildNav, mainNav, settingsNav, type NavItem } from "./nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown";
 import { StatusDot } from "@/components/ui/misc";
 
-import { inbox as seedInbox } from "@/lib/mock/workspace";
-import type { InboxState } from "@/lib/store";
+import type { InboxConversation, InboxState } from "@/lib/store";
 
-function inboxCount(state: InboxState) {
-  return seedInbox.filter((c) => !state[c.id]?.resolved).length;
+function inboxCount(inbox: InboxConversation[], state: InboxState) {
+  return inbox.filter((c) => !state[c.id]?.resolved).length;
 }
 
 function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
   const pathname = usePathname();
   const pending = useApp((s) => s.approvals.filter((a) => a.status === "pending").length);
-  const handoffs = useApp((s) => inboxCount(s.inboxState));
+  const handoffs = useApp((s) => inboxCount(s.inbox, s.inboxState));
   const t = useT();
   const active = pathname === item.href || pathname.startsWith(item.href + "/") || (item.href.startsWith("/settings") && pathname.startsWith("/settings"));
   const badge = item.badge === "approvals" ? pending : item.badge === "inbox" ? handoffs : 0;
@@ -48,6 +46,7 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const workers = useApp((s) => s.workers);
+  const workspace = useApp((s) => s.workspaceInfo);
   const [wsName] = useSetting("workspace.name", workspace.name);
   const [wsRegion] = useSetting("workspace.region", workspace.region);
   const t = useT();

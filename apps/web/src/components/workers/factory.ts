@@ -1,6 +1,7 @@
 import type { InteractionType, Template, Thread, Worker, WorkerEdge, WorkerNode } from "@/lib/types";
 import { workers as seedWorkers } from "@/lib/mock/workers";
 import { appById } from "@/lib/mock/apps";
+import { clientId } from "@/lib/api";
 
 const uid = () => Math.random().toString(36).slice(2, 8);
 
@@ -109,7 +110,7 @@ export function graphFor(text: string, apps: string[], interaction: InteractionT
 
 function base(partial: Partial<Worker> & Pick<Worker, "name" | "description" | "interaction" | "nodes" | "edges" | "apps">, owner: string): Worker {
   return {
-    id: `w-${uid()}`,
+    id: clientId("w"),
     emoji: emojiFor[partial.interaction],
     color: colorFor[partial.interaction],
     channels: [],

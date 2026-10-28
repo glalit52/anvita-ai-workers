@@ -4,8 +4,11 @@ The frontend for Anvita AI: the chat-first AI coworker (Explore) plus the AI Wor
 (Harden → Scale). Every screen in `docs/user-journeys.md` is built and fully interactive:
 everything you create, edit, approve or delete is saved in the browser (localStorage) and
 survives a reload. Data starts from a realistic demo workspace and AI runs are simulated,
-so it works end to end before the backend exists. Settings → Profile → "Reset demo data"
+so it works end to end without a server. Settings → Profile → "Reset demo data"
 restores the seed.
+
+Point it at the [Anvita backend](https://github.com/glalit52/anvita-ai-worker-backend) and the same
+screens run on real data instead (see **Live mode** below).
 
 ## Run
 
@@ -26,6 +29,55 @@ export, members, API keys, policies, Hindi UI, notifications, onboarding).
 ```bash
 npm run build && npx next start -p 3100 &
 BASE_URL=http://localhost:3100 npm run test:e2e
+```
+
+## Live mode (against the backend)
+
+Set `NEXT_PUBLIC_API_URL` and the app talks to the API instead of the local demo store:
+
+```bash
+# in anvita-ai-worker-backend
+docker compose up -d postgres && npm ci && npm run db:seed
+CORS_ORIGINS=http://localhost:3000 WEB_URL=http://localhost:3000 npm run dev   # :4000
+
+# in apps/web
+echo "NEXT_PUBLIC_API_URL=http://localhost:4000" > .env.local
+npm run dev    # sign in as priya@kesarfoods.in / anvita-demo-2026, or create a workspace
+```
+
+How it works:
+
+- `src/lib/api.ts` — fetch client, session storage, rotating refresh tokens.
+- `src/lib/backend.ts` — loads the workspace into the existing Zustand store, makes each store
+  action also call its endpoint (optimistic; on error it toasts and reloads that slice from the
+  server), and applies realtime Server-Sent Events: agent runs stream into the chat, approvals,
+  notifications, connections, queue and inbox update live. Snapshot loads never overwrite newer
+  pushed updates.
+- `src/components/live-sync.tsx` — guards signed-in routes and starts the sync.
+- Real email + password sign-in/sign-up (`/login`), Google/Microsoft single sign-on
+  (`/auth/callback` receives the session), invite acceptance (`/invite/[token]`), file uploads to
+  chat and knowledge bases.
+- **Integrations:** the connect dialog (Integrations, chat connect cards, onboarding) offers
+  "Sign in with <app>" (OAuth, when the server has that app's client configured), an API-key form
+  verified live by the server, or sample data. Connections show live/sample status, the connected
+  account and health, with a Test button and the Slack/WhatsApp webhook URLs to paste into those
+  apps. MCP servers are connected for real and their tools discovered.
+- **Billing:** credit packs priced by the server; pay with Razorpay Checkout (in-page) or Stripe
+  Checkout (redirect); payment history from the API. Without a payment provider, admins record
+  manual top-ups.
+- **Analytics:** daily usage, per-person and per-Worker breakdowns from the API.
+
+Screens read from the same store in both modes, so no page needs to know which mode it is in.
+Importing an OpenAPI spec is demo-only for now (add internal APIs as MCP servers instead).
+
+Live end-to-end tests (10 journeys: auth guard and sign-in/out, UI sign-up, connect card →
+resume, approve → send, Studio edits saved to the server, memory/members/API keys, API-key and
+sample-data connections, MCP server → agent tool call, billing top-up, SSO landing + analytics):
+
+```bash
+# backend on :4000 with CORS_ORIGINS=http://localhost:3100 and AUTH_RATE_LIMIT_PER_MINUTE=1000
+NEXT_PUBLIC_API_URL=http://localhost:4000 npm run build && npx next start -p 3100 &
+npm run test:e2e:live
 ```
 
 ## Stack

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Bot, Check, CircleX, Clock, Coins, Copy, FlaskConical, Loader2, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, User, Users, X } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { EvalCase, RunRecord, Worker } from "@/lib/types";
-import { runs as seedRuns } from "@/lib/mock/workers";
+import { isLive } from "@/lib/api";
 import { appById } from "@/lib/mock/apps";
 import { useApp, useSetting } from "@/lib/store";
 import { parseCSV } from "@/lib/download";
@@ -364,11 +364,13 @@ export function RunsTab({ worker }: { worker: Worker }) {
   const [replay, setReplay] = useState(-1);
   const cases = useApp((s) => s.evalCases[worker.id]) ?? EMPTY;
   const setCases = useApp((s) => s.setEvalCases);
-  const own = seedRuns.filter((r) => r.worker === worker.name);
-  const list: RunRecord[] = own.length
+  const allRuns = useApp((s) => s.runs);
+  const own = allRuns.filter((r) => r.worker === worker.name);
+  // Demo mode shows sample history for seeded Workers that have no named runs.
+  const list: RunRecord[] = own.length || isLive()
     ? own
     : worker.runs30d > 0
-      ? seedRuns.slice(0, 5).map((r) => ({ ...r, worker: worker.name }))
+      ? allRuns.slice(0, 5).map((r) => ({ ...r, worker: worker.name }))
       : [];
 
   const doReplay = async () => {

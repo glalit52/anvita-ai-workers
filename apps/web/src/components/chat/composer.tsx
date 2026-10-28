@@ -7,6 +7,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppLogo } from "@/components/brand/app-logo";
 import { useApp } from "@/lib/store";
+import { registerFile } from "@/lib/backend";
 import { appById } from "@/lib/mock/apps";
 import { formatBytes } from "@/lib/download";
 import { useT } from "@/lib/i18n";
@@ -137,7 +138,11 @@ export function Composer({
 
   const onFiles = (list: FileList | null) => {
     if (!list) return;
-    const next = Array.from(list).map((f) => ({ id: crypto.randomUUID(), kind: kindFor(f.name), title: f.name, subtitle: formatBytes(f.size), size: formatBytes(f.size) }));
+    const next = Array.from(list).map((f) => {
+      const id = crypto.randomUUID();
+      registerFile(id, f); // uploaded with the message in live mode
+      return { id, kind: kindFor(f.name), title: f.name, subtitle: formatBytes(f.size), size: formatBytes(f.size) };
+    });
     setFiles((cur) => [...cur, ...next].slice(0, 10));
   };
 

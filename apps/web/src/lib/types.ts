@@ -41,6 +41,19 @@ export interface Connection {
   status: "healthy" | "expired" | "error";
   sharedWith?: string[];
   actionsUsed30d: number;
+  /** Live mode: real credentials vs the sample-data driver. */
+  mode?: "live" | "demo";
+  account?: string | null;
+  statusDetail?: string | null;
+}
+
+/** How an app can be connected (from the API's /apps). */
+export interface AppAuth {
+  oauth: boolean;
+  oauthConfigured: boolean;
+  oauthNeeds: { key: string; label: string; placeholder?: string }[];
+  apiKey: { fields: { key: string; label: string; secret?: boolean; placeholder?: string; optional?: boolean }[]; help: string } | null;
+  live: boolean;
 }
 
 export type StepStatus = "pending" | "running" | "done" | "waiting" | "error" | "skipped";
@@ -313,6 +326,8 @@ export interface McpServer {
   auth: "oauth" | "bearer" | "none";
   tools: number;
   status: "healthy" | "error";
+  toolNames?: string[];
+  lastError?: string | null;
 }
 
 export interface Profile {
