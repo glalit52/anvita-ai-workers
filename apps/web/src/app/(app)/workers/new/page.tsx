@@ -12,6 +12,8 @@ import { AppLogo } from "@/components/brand/app-logo";
 import { useApp } from "@/lib/store";
 import { toast } from "sonner";
 import { blankWorker, guessApps, workerFromDescription, workerFromThread } from "@/components/workers/factory";
+import { clientId, isLive } from "@/lib/api";
+import { createWorkerVia, draftWorker } from "@/lib/backend";
 import type { Worker } from "@/lib/types";
 import { cn, sleep } from "@/lib/utils";
 
@@ -63,7 +65,16 @@ function NewWorkerInner() {
   const liveApps = guessApps(text);
 
   const generate = async () => {
-    const w = workerFromDescription(text, owner);
+    let w = workerFromDescription(text, owner);
+    if (isLive()) {
+      // The server drafts the graph with real, runnable actions.
+      try {
+        w = { ...(await draftWorker(text)), id: clientId("w"), owner };
+      } catch (e) {
+        toast.error((e as Error).message);
+        return;
+      }
+    }
     setDraft(w);
     for (let i = 0; i <= 6; i++) {
       setBuilding(i);
@@ -78,9 +89,19 @@ function NewWorkerInner() {
     router.push(`/workers/${draft.id}?autopilot=1`);
   };
 
-  const fromThread = (id: string) => {
+  const fromThread = async (id: string) => {
     const t = threads.find((x) => x.id === id);
     if (!t) return;
+    if (isLive()) {
+      try {
+        const wid = await createWorkerVia({ from: "thread", threadId: t.id, name: t.title });
+        toast.success(`Compiled “${t.title}” into a Worker`);
+        router.push(`/workers/${wid}?autopilot=1`);
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+      return;
+    }
     const w = workerFromThread(t, owner);
     addWorker(w);
     toast.success(`Compiled “${t.title}” into a Worker`);

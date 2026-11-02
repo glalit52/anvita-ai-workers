@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Artifact } from "@/lib/types";
+import { isLive } from "@/lib/api";
+import { LiveArtifactPanel } from "./live-artifact";
 
 const spend = [
   { ch: "Meta", spend: 6.8, rev: 25.1 },
@@ -183,6 +185,10 @@ function DocPreview() {
 }
 
 export function ArtifactPanel({ artifact, onClose }: { artifact: Artifact; onClose: () => void }) {
+  return isLive() ? <LiveArtifactPanel artifact={artifact} onClose={onClose} /> : <DemoArtifactPanel artifact={artifact} onClose={onClose} />;
+}
+
+function DemoArtifactPanel({ artifact, onClose }: { artifact: Artifact; onClose: () => void }) {
   const url = "kesar.anvita.app/" + artifact.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   const previewRef = useRef<HTMLDivElement>(null);
   const baseName = artifact.title.replace(/\.[a-z0-9]+$/i, "");

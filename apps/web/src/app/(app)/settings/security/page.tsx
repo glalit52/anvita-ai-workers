@@ -10,6 +10,8 @@ import { confirm } from "@/components/ui/confirm";
 import { SectionHeader, SettingRow } from "@/components/settings-section";
 import { useApp, useSetting } from "@/lib/store";
 import { downloadFile } from "@/lib/download";
+import { isLive } from "@/lib/api";
+import { EnterpriseSso } from "@/components/settings/enterprise-sso";
 
 const sessions = [
   { id: "s1", device: "Chrome on macOS", where: "Mumbai, IN · 49.36.••.12", when: "Active now", current: true, icon: Laptop },
@@ -53,15 +55,20 @@ export default function SecurityPage() {
   return (
     <>
       <SectionHeader title="Security & SSO" description="Identity, data residency and compliance controls." />
-      <Card>
-        <SettingRow title="Single sign-on (SAML / OIDC)" description="Google Workspace · kesarfoods.in · enforced for all members">
-          <Badge variant="success">
-            <Check /> Enforced
-          </Badge>
-        </SettingRow>
-        <SettingRow title="SCIM provisioning" description="Automatically add and remove members from your identity provider">
-          <Switch checked={scim} onCheckedChange={(v) => { setScim(v); saved("SCIM provisioning"); log("security.scim", v ? "enabled" : "disabled"); }} aria-label="SCIM provisioning" />
-        </SettingRow>
+      {isLive() && <EnterpriseSso />}
+      <Card className={isLive() ? "mt-4" : undefined}>
+        {!isLive() && (
+          <>
+            <SettingRow title="Single sign-on (SAML / OIDC)" description="Google Workspace · kesarfoods.in · enforced for all members">
+              <Badge variant="success">
+                <Check /> Enforced
+              </Badge>
+            </SettingRow>
+            <SettingRow title="SCIM provisioning" description="Automatically add and remove members from your identity provider">
+              <Switch checked={scim} onCheckedChange={(v) => { setScim(v); saved("SCIM provisioning"); log("security.scim", v ? "enabled" : "disabled"); }} aria-label="SCIM provisioning" />
+            </SettingRow>
+          </>
+        )}
         <SettingRow title="Domain capture" description="New sign-ups from @kesarfoods.in join this workspace">
           <Switch checked={domain} onCheckedChange={(v) => { setDomain(v); saved("Domain capture"); }} aria-label="Domain capture" />
         </SettingRow>

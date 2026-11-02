@@ -61,18 +61,30 @@ How it works:
   "Sign in with <app>" (OAuth, when the server has that app's client configured), an API-key form
   verified live by the server, or sample data. Connections show live/sample status, the connected
   account and health, with a Test button and the Slack/WhatsApp webhook URLs to paste into those
-  apps. MCP servers are connected for real and their tools discovered.
+  apps. MCP servers are connected for real and their tools discovered. OpenAPI specs (file or
+  URL) are imported with their auth; each operation becomes an action.
+- **Workflow Studio:** templates come from the server's executable library. The inspector
+  configures every step type with the server's action catalog (inputs per action, expressions,
+  loops, branches, approvals, code, send channels). The graph is checked as you edit ("N to fix"),
+  **Test run** executes the draft for real and colours each step from the run trace, and the Runs
+  tab shows each run's steps and outputs. Workers can run step by step (workflow) or as an agent.
+- **Files:** artifacts open as real previews (PDF, images, CSV tables, sandboxed HTML, Markdown)
+  and download as the actual file.
+- **Security:** SAML single sign-on (IdP metadata import, SP details to copy, enforce for your
+  domains) and SCIM tokens on Settings → Security; the login page sends SSO domains to the IdP.
+- **Knowledge:** shows whether search is hybrid (keyword + semantic) and how much is indexed.
 - **Billing:** credit packs priced by the server; pay with Razorpay Checkout (in-page) or Stripe
   Checkout (redirect); payment history from the API. Without a payment provider, admins record
   manual top-ups.
 - **Analytics:** daily usage, per-person and per-Worker breakdowns from the API.
 
 Screens read from the same store in both modes, so no page needs to know which mode it is in.
-Importing an OpenAPI spec is demo-only for now (add internal APIs as MCP servers instead).
 
-Live end-to-end tests (10 journeys: auth guard and sign-in/out, UI sign-up, connect card →
+Live end-to-end tests (16 journeys: auth guard and sign-in/out, UI sign-up, connect card →
 resume, approve → send, Studio edits saved to the server, memory/members/API keys, API-key and
-sample-data connections, MCP server → agent tool call, billing top-up, SSO landing + analytics):
+sample-data connections, MCP server → agent tool call, billing top-up, SSO landing + analytics,
+template → test run with step results, validation, OpenAPI import, SAML + SCIM setup and SSO
+login routing, sandboxed Python → real file preview, knowledge search status):
 
 ```bash
 # backend on :4000 with CORS_ORIGINS=http://localhost:3100 and AUTH_RATE_LIMIT_PER_MINUTE=1000

@@ -241,7 +241,7 @@ export function registerFile(id: string, file: File) {
   files.set(id, file);
 }
 
-const WORKER_FIELDS = ["name", "description", "emoji", "color", "interaction", "channels", "apps", "trigger", "pinned", "nodes", "edges"];
+const WORKER_FIELDS = ["name", "description", "emoji", "color", "interaction", "channels", "apps", "trigger", "pinned", "nodes", "edges", "engine"];
 /** Last version/status the server confirmed per worker — publish/rollback decisions compare against it, not the optimistic store. */
 const serverWorker = new Map<string, { version: number; status: string }>();
 const rememberWorker = (w: S) => serverWorker.set(w.id, { version: w.version, status: w.status });
@@ -516,6 +516,17 @@ export function installLiveActions() {
     },
   });
 }
+
+/** Create a Worker on the server from a template, a description or a chat thread; returns its id. */
+export async function createWorkerVia(body: { from: "template"; templateId: string } | { from: "description"; description: string } | { from: "thread"; threadId: string; name?: string }) {
+  const id = clientWorkerId();
+  const w = await post("/workers", { id, ...body });
+  applyWorker(w);
+  return w.id as string;
+}
+
+/** Autopilot: let the server draft a graph (with real actions) from a description. */
+export const draftWorker = (description: string) => post<Worker>("/workers/draft", { description });
 
 function clientWorkerId() {
   const bytes = crypto.getRandomValues(new Uint8Array(12));

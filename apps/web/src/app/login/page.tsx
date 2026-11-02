@@ -7,7 +7,7 @@ import { Loader2, Mail, Smartphone } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { API_URL, get, isLive, login, logout, signup } from "@/lib/api";
+import { API_URL, ApiError, get, isLive, login, logout, signup } from "@/lib/api";
 import { useApp } from "@/lib/store";
 
 function GoogleIcon() {
@@ -71,8 +71,25 @@ function LoginInner() {
     setTimeout(() => router.push(mode === "signup" ? "/onboarding" : "/home"), 800);
   };
 
+  // Enterprise SSO: an email whose domain belongs to a SAML workspace signs in through its IdP.
+  const [saml, setSaml] = useState<{ loginUrl: string; enforced: boolean } | null>(null);
+  const discover = async (email: string) => {
+    if (!live || mode === "signup" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setSaml(null);
+    try {
+      const r = await get<{ method: string; loginUrl: string | null; enforced: boolean }>(`/auth/sso/discover?email=${encodeURIComponent(email.trim())}`);
+      setSaml(r.method === "saml" && r.loginUrl ? { loginUrl: r.loginUrl, enforced: r.enforced } : null);
+    } catch {
+      setSaml(null);
+    }
+  };
+  const ssoRedirect = (loginUrl: string) => {
+    const next = params.get("next");
+    window.location.href = `${loginUrl}?redirect=${encodeURIComponent(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home")}`;
+  };
+
   /** Live mode: real email + password auth against the API. */
   const submitLive = async () => {
+    if (saml?.enforced && mode !== "signup") return ssoRedirect(saml.loginUrl);
     setError(null);
     setLoading("otp");
     try {
@@ -82,6 +99,8 @@ function LoginInner() {
       const next = params.get("next");
       router.push(mode === "signup" ? "/onboarding" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
     } catch (e) {
+      const loginUrl = e instanceof ApiError && e.code === "sso_required" ? (e.details as { loginUrl?: string } | undefined)?.loginUrl : undefined;
+      if (loginUrl) return ssoRedirect(loginUrl);
       setError(e instanceof Error ? e.message : "Something went wrong");
       setLoading(null);
     }
@@ -132,17 +151,26 @@ function LoginInner() {
               )}
               <div className="grid gap-1.5">
                 <Label htmlFor="email">Work email</Label>
-                <Input id="email" type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                <Input id="email" type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} onBlur={(e) => void discover(e.target.value)} required />
               </div>
+              {saml && (
+                <Button type="button" size="lg" variant={saml.enforced ? "default" : "outline"} onClick={() => ssoRedirect(saml.loginUrl)}>
+                  Continue with single sign-on
+                </Button>
+              )}
+              {!saml?.enforced && (
+              <>
               <div className="grid gap-1.5">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={mode === "signup" ? 10 : 1} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
                 {mode === "signup" && <p className="text-[11.5px] text-muted-foreground">At least 10 characters.</p>}
               </div>
+              </>
+              )}
               {error && <p role="alert" className="text-[12.5px] text-danger">{error}</p>}
-              <Button type="submit" size="lg" disabled={!!loading}>
+              {!saml?.enforced && <Button type="submit" size="lg" disabled={!!loading}>
                 {loading === "otp" && <Loader2 className="animate-spin" />} {mode === "signup" ? "Create workspace" : "Sign in"}
-              </Button>
+              </Button>}
             </form>
           ) : (
           <>

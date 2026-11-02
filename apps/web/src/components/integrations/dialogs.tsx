@@ -16,6 +16,8 @@ import { cn, sleep } from "@/lib/utils";
 import { API_URL, del, isLive, post } from "@/lib/api";
 import { load } from "@/lib/backend";
 import { connectWithCredentials, startOAuth, testConnection } from "@/lib/connect";
+import { importSpec, previewSpec } from "@/lib/custom-apis";
+import { loadCatalog } from "@/lib/workflow";
 
 type Scope = Connection["scope"];
 export const GROUPS = ["Marketing", "Finance", "Support", "Sales", "Operations", "Leadership"];
@@ -560,6 +562,29 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
   const [state, setState] = useState<"idle" | "loading" | "parsed" | "error">("idle");
   const [result, setResult] = useState<{ title: string; ops: Operation[] } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Live mode: the server parses the spec and stores it with the API's credentials.
+  const [specText, setSpecText] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [authType, setAuthType] = useState<string>("none");
+  const [authName, setAuthName] = useState("");
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const livePreview = async (body: { spec?: string; specUrl?: string }) => {
+    setState("loading");
+    setError("");
+    try {
+      const p = await previewSpec(body);
+      setResult({ title: p.title, ops: p.operations.map((o) => ({ method: o.method, path: o.path })) as Operation[] });
+      setBaseUrl(p.baseUrl ?? "");
+      setAuthType(p.auth.type);
+      setAuthName(p.auth.name ?? "");
+      setState(p.operations.length ? "parsed" : "error");
+    } catch (e) {
+      setError((e as Error).message);
+      setState("error");
+    }
+  };
 
   const reset = () => {
     setUrl("");
@@ -569,6 +594,7 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
   };
 
   const fetchUrl = async () => {
+    if (isLive()) return livePreview({ specUrl: url.trim() });
     setState("loading");
     await sleep(1100);
     const host = url.replace(/^https?:\/\//, "").split("/")[0];
@@ -580,6 +606,10 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
     setFileName(f.name);
     setState("loading");
     const text = await f.text();
+    if (isLive()) {
+      setSpecText(text);
+      return livePreview({ spec: text });
+    }
     const parsed = parseSpec(text);
     if (parsed && parsed.ops.length) {
       setResult(parsed);
@@ -603,8 +633,7 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
           <FileUp className="size-5 text-primary" /> Import an OpenAPI spec
         </DialogTitle>
         <DialogDescription className="mt-1">
-          Turn any internal REST API into tools Anvita can call. Each operation becomes one action.
-          {isLive() && " Importing into a live workspace isn't available yet — expose the API through an MCP server for now."}
+          Turn any internal REST API into tools Anvita can call. Each operation becomes one action you can use in chat and in Workflow steps.
         </DialogDescription>
         <div className="mt-5">
           <Segmented
@@ -647,7 +676,40 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
             </>
           )}
         </div>
-        {state === "error" && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger">No operations found. Make sure the file is an OpenAPI 3 / Swagger 2 spec with a `paths` section.</p>}
+        {state === "error" && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{error || "No operations found. Make sure the file is an OpenAPI 3 / Swagger 2 spec with a `paths` section."}</p>}
+        {isLive() && state === "parsed" && (
+          <div className="mt-4 grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="api-base">Base URL</Label>
+              <Input id="api-base" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="api-auth">Authentication</Label>
+                <Select id="api-auth" value={authType} onChange={(e) => setAuthType(e.target.value)}>
+                  <option value="none">None</option>
+                  <option value="bearer">Bearer token</option>
+                  <option value="header">API key in header</option>
+                  <option value="query">API key in query</option>
+                  <option value="basic">Basic (user:password)</option>
+                </Select>
+              </div>
+              {(authType === "header" || authType === "query") && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="api-auth-name">{authType === "header" ? "Header name" : "Parameter name"}</Label>
+                  <Input id="api-auth-name" value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder={authType === "header" ? "X-API-Key" : "api_key"} />
+                </div>
+              )}
+            </div>
+            {authType !== "none" && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="api-secret">{authType === "basic" ? "user:password" : "Token / key"}</Label>
+                <Input id="api-secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+                <p className="text-[11.5px] text-muted-foreground">Stored encrypted. Never shown to the AI or returned by the API.</p>
+              </div>
+            )}
+          </div>
+        )}
         {state === "parsed" && result && (
           <div className="mt-4 overflow-hidden rounded-xl border border-border">
             <div className="flex items-center justify-between border-b border-border bg-subtle px-3.5 py-2 text-[13px]">
@@ -672,11 +734,23 @@ export function ImportOpenApiDialog({ open, onOpenChange }: { open: boolean; onO
             Cancel
           </Button>
           <Button
-            disabled={state !== "parsed" || !result}
-            onClick={() => {
+            disabled={state !== "parsed" || !result || importing}
+            onClick={async () => {
               if (!result) return;
               if (isLive()) {
-                toast.error("OpenAPI import isn't available in live workspaces yet — add the API as an MCP server.");
+                setImporting(true);
+                try {
+                  const api = await importSpec({ ...(mode === "url" ? { specUrl: url.trim() } : { spec: specText }), baseUrl: baseUrl.trim() || undefined, authType, authName: authName.trim() || undefined, secret: secret || undefined });
+                  void loadCatalog(true);
+                  toast.success(`${api.name} imported — ${api.operations.length} actions available as api.${api.slug}.*`);
+                  reset();
+                  setSecret("");
+                  onOpenChange(false);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                } finally {
+                  setImporting(false);
+                }
                 return;
               }
               add({ name: `${result.title} (OpenAPI)`, url: mode === "url" ? url.trim() : `file://${fileName}`, auth: "bearer", tools: result.ops.length, status: "healthy" });

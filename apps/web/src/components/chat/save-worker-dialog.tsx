@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { AppLogo } from "@/components/brand/app-logo";
 import { nodeMeta } from "@/components/studio/node-meta";
 import { compileThread } from "@/components/workers/factory";
+import { isLive } from "@/lib/api";
 import { useApp } from "@/lib/store";
 import { cn, sleep } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ export function SaveWorkerDialog({
 
   const compiled = useMemo(() => {
     if (!thread) return null;
-    const w = compileThread(thread, name || "Untitled Worker", owner, schedule);
+    const w = compileThread(thread, name || "Untitled Worker", owner, schedule, isLive() ? useApp.getState().profile.email : undefined);
     if (!approval) {
       const ap = w.nodes.find((n) => n.kind === "approval");
       if (ap) {

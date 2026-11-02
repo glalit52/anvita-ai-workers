@@ -16,6 +16,8 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    /** Structured error details from the API (validation issues, SSO login URL…). */
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -97,11 +99,22 @@ export async function api<T = any>(method: string, path: string, body?: Body, re
   const text = await res.text();
   const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : undefined;
   if (!res.ok) {
-    const err = (data as { error?: { code?: string; message?: string; details?: { path: string; message: string }[] } } | undefined)?.error;
-    const detail = err?.details?.[0]?.message;
-    throw new ApiError(res.status, err?.code ?? "error", detail ? `${err?.message}: ${detail}` : (err?.message ?? `Request failed (${res.status})`));
+    const err = (data as { error?: { code?: string; message?: string; details?: unknown } } | undefined)?.error;
+    const detail = Array.isArray(err?.details) ? (err.details[0] as { message?: string } | undefined)?.message : undefined;
+    throw new ApiError(res.status, err?.code ?? "error", detail ? `${err?.message}: ${detail}` : (err?.message ?? `Request failed (${res.status})`), err?.details);
   }
   return data as T;
+}
+
+/** Authenticated binary download (artifacts). */
+export async function apiBlob(path: string, retry = true): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (session?.accessToken) headers.authorization = `Bearer ${session.accessToken}`;
+  if (session?.workspaceId) headers["x-workspace-id"] = session.workspaceId;
+  const res = await fetch(`${API_URL}/v1${path}`, { headers });
+  if (res.status === 401 && retry && (await refreshSession())) return apiBlob(path, false);
+  if (!res.ok) throw new ApiError(res.status, "error", `Download failed (${res.status})`);
+  return res.blob();
 }
 
 export const get = <T = any>(path: string) => api<T>("GET", path);

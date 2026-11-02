@@ -152,7 +152,8 @@ export interface WorkerNode {
   appId?: string;
   x: number;
   y: number;
-  config?: Record<string, string | number | boolean | string[]>;
+  /** Step settings. Strings may hold {{ expressions }}; tool inputs use `input.<field>` keys. */
+  config?: Record<string, unknown>;
 }
 
 export interface WorkerEdge {
@@ -187,6 +188,8 @@ export interface Worker {
   pinned?: boolean;
   nodes: WorkerNode[];
   edges: WorkerEdge[];
+  /** graph: run the workflow step by step (default in live mode); agent: the model follows it as guidance. */
+  engine?: "graph" | "agent";
 }
 
 export interface Template {
