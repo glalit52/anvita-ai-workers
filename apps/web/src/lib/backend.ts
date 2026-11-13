@@ -87,7 +87,7 @@ const inboxStateOf = (c: S) => ({
   notes: c.notes || undefined,
   replies: (c.transcript ?? []).filter((t: S) => t.from === "agent").map((t: S) => ({ text: t.text, time: hhmm(t.time) })),
 });
-const RUN_STATUS: Record<string, RunRecord["status"]> = { queued: "running", running: "running", waiting_auth: "waiting_approval", waiting_approval: "waiting_approval", succeeded: "succeeded", failed: "failed", cancelled: "failed" };
+const RUN_STATUS: Record<string, RunRecord["status"]> = { queued: "running", running: "running", waiting: "running", waiting_auth: "waiting_approval", waiting_approval: "waiting_approval", succeeded: "succeeded", failed: "failed", cancelled: "failed" };
 
 function mapRun(r: S): RunRecord {
   const worker = useApp.getState().workers.find((w) => w.id === r.workerId);

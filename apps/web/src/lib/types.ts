@@ -142,6 +142,7 @@ export type NodeKind =
   | "send"
   | "handoff"
   | "kb"
+  | "wait"
   | "end";
 
 export interface WorkerNode {

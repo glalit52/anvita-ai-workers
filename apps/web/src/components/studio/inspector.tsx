@@ -251,8 +251,18 @@ export function Inspector({ node, onChange, onDelete, issues = [], catalog = nul
             ) : (
               <p className="text-[12px] text-muted-foreground">The trigger's payload is available to later steps as <code>{"{{ trigger.<field> }}"}</code>.</p>
             )}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Max active minutes" hint="Working time per run, excluding waits">
+                <Input inputMode="numeric" value={str("maxActiveMinutes", "")} onChange={(e) => set("maxActiveMinutes", e.target.value ? Number(e.target.value.replace(/\D/g, "")) || undefined : undefined)} placeholder="60" aria-label="Max active minutes" />
+              </Field>
+              <Field label="Max days" hint="Including waits and approvals">
+                <Input inputMode="numeric" value={str("maxDays", "")} onChange={(e) => set("maxDays", e.target.value ? Number(e.target.value.replace(/\D/g, "")) || undefined : undefined)} placeholder="30" aria-label="Max days" />
+              </Field>
+            </div>
           </>
         )}
+
+        {node.kind === "wait" && <WaitConfig cfg={cfg} set={set} replace={(next) => onChange(node.id, { config: next })} />}
 
         {node.kind === "map" && (
           <>
@@ -589,6 +599,55 @@ export function Inspector({ node, onChange, onDelete, issues = [], catalog = nul
         </Field>
       </div>
     </div>
+  );
+}
+
+function WaitConfig({ cfg, set, replace }: { cfg: Cfg; set: (k: string, v: unknown) => void; replace: (next: Cfg) => void }) {
+  const mode = cfg.until !== undefined ? "until" : cfg.at !== undefined ? "at" : "duration";
+  // One update: switching modes clears the other two settings.
+  const pick = (m: string) => {
+    const { duration: _d, until: _u, at: _a, ...rest } = cfg;
+    void _d, void _u, void _a;
+    replace({ ...rest, [m]: m === "duration" ? "1h" : m === "at" ? "09:30" : "{{ trigger.followUpAt }}" });
+  };
+  return (
+    <>
+      <Field label="Wait">
+        <Select value={mode} onChange={(e) => pick(e.target.value)} aria-label="Wait mode">
+          <option value="duration">For a length of time</option>
+          <option value="until">Until a date</option>
+          <option value="at">Until a time of day</option>
+        </Select>
+      </Field>
+      {mode === "duration" && (
+        <Field label="How long" hint="e.g. 30m, 2h, 3 days (up to 90 days)">
+          <Input value={asStr(cfg.duration)} onChange={(e) => set("duration", e.target.value)} placeholder="2h" aria-label="Wait duration" />
+        </Field>
+      )}
+      {mode === "until" && (
+        <Field label="Date" hint={<>An ISO date or an expression like <code>{"{{ steps.a1.follow_up_date }}"}</code></>}>
+          <Input value={asStr(cfg.until)} onChange={(e) => set("until", e.target.value)} className="font-mono text-[12.5px]" aria-label="Wait until" />
+        </Field>
+      )}
+      {mode === "at" && (
+        <>
+          <Field label="Time of day" hint="HH:MM, next occurrence">
+            <Input value={asStr(cfg.at)} onChange={(e) => set("at", e.target.value)} placeholder="09:30" aria-label="Wait until time" />
+          </Field>
+          <Field label="Time zone">
+            <Select value={asStr(cfg.timezone) || "Asia/Kolkata"} onChange={(e) => set("timezone", e.target.value)} aria-label="Wait time zone">
+              {["Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Europe/London", "America/New_York", "UTC"].map((z) => (
+                <option key={z}>{z}</option>
+              ))}
+            </Select>
+          </Field>
+          <label className="flex items-center gap-2 text-[12.5px]">
+            <input type="checkbox" checked={cfg.weekdays === true} onChange={(e) => set("weekdays", e.target.checked || undefined)} /> Weekdays only
+          </label>
+        </>
+      )}
+      <p className="text-[12px] text-muted-foreground">The run pauses without using credits and resumes automatically. Later steps can use <code>{"{{ steps.<id>.waitedUntil }}"}</code>.</p>
+    </>
   );
 }
 

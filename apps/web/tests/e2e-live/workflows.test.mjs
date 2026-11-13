@@ -142,3 +142,50 @@ test("knowledge: the page shows hybrid search status", async (t) => {
   await go("/knowledge");
   await page.getByText(/Hybrid search|Keyword search/).first().waitFor({ timeout: 10000 });
 });
+
+test("workflows: a Wait step is configured in the Studio and parks the run", async (t) => {
+  const s = await signup();
+  const w = await apiCall(s, "POST", "/workers", {
+    from: "blank",
+    name: "Follow-up",
+    interaction: "api",
+    nodes: [
+      { id: "t1", kind: "trigger", title: "API call", x: 0, y: 0 },
+      { id: "w1", kind: "wait", title: "Wait a day", x: 0, y: 130, config: { duration: "soon" } },
+      { id: "e1", kind: "end", title: "Done", x: 0, y: 260 },
+    ],
+    edges: [
+      { id: "t1-w1", source: "t1", target: "w1" },
+      { id: "w1-e1", source: "w1", target: "e1" },
+    ],
+  });
+  const { page, go, errors } = await open(t, s);
+  await go(`/workers/${w.id}`);
+  await page.getByText("1 to fix").click({ timeout: 10000 });
+  await page.getByText(/isn't a duration/).waitFor();
+  await page.locator(".react-flow__node", { hasText: "Wait a day" }).click();
+  await page.getByLabel("Wait duration").fill("1 day");
+  await page.getByText(/ready|to check/).first().waitFor({ timeout: 10000 });
+  await page.getByLabel("Wait mode").selectOption("at");
+  assert.equal(await page.getByLabel("Wait until time").inputValue(), "09:30");
+  assert.equal(await page.getByLabel("Wait duration").count(), 0);
+  await page.getByLabel("Wait mode").selectOption("duration");
+  await page.getByLabel("Wait duration").fill("2h");
+  await page.waitForTimeout(1500); // autosave
+
+  const saved = await apiCall(s, "GET", `/workers/${w.id}`);
+  const node = saved.nodes.find((n) => n.id === "w1");
+  assert.deepEqual({ duration: node.config.duration, at: node.config.at }, { duration: "2h", at: undefined });
+  const pub = await apiCall(s, "POST", `/workers/${w.id}/publish`, {});
+  assert.ok(pub.version >= 1, JSON.stringify(pub));
+  const run = await apiCall(s, "POST", `/workers/${w.id}/runs`, { inputs: {} });
+  let r;
+  for (let i = 0; i < 40; i++) {
+    r = await apiCall(s, "GET", `/runs/${run.id}`);
+    if (r.status === "waiting") break;
+    await page.waitForTimeout(250);
+  }
+  assert.equal(r.status, "waiting");
+  assert.match(r.trace.nodes.find((n) => n.id === "w1").detail, /Waiting until/);
+  assert.deepEqual(errors, []);
+});
