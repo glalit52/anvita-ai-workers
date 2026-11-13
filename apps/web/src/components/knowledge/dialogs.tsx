@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { isLive, post } from "@/lib/api";
+import { load } from "@/lib/backend";
 import { toast } from "sonner";
 import { FileText, Globe, Loader2, Upload, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -88,6 +90,12 @@ export function startSourceSync(kbId: string, source: Source, delay = 2400) {
   const { knowledgeBases, updateKnowledgeBase } = useApp.getState();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   if (!kb) return;
+  if (isLive()) {
+    // The server registers the source; its connector driver does the actual sync.
+    updateKnowledgeBase(kbId, { sources: [...kb.sources, { ...source, docs: 0, status: "synced", lastSync: "just now" }] });
+    toast.success(`${source.label} added`);
+    return;
+  }
   updateKnowledgeBase(kbId, { sources: [...kb.sources, source], updatedAt: "syncing" });
   setTimeout(() => {
     const fresh = useApp.getState().knowledgeBases.find((k) => k.id === kbId);
@@ -116,9 +124,25 @@ export function AddSourceDialog({ kb, open, onOpenChange }: { kb: KnowledgeBase;
     setBusy(false);
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!valid) return;
     setBusy(true);
+    if (isLive() && kind === "upload") {
+      // Live mode: upload and index the files for real.
+      const form = new FormData();
+      for (const f of files) form.append("file", f, f.name);
+      try {
+        const r = await post<{ data: { chunks: number }[] }>(`/knowledge-bases/${kb.id}/documents`, form);
+        await load.knowledge();
+        toast.success(`Indexed ${r.data.length} file${r.data.length === 1 ? "" : "s"} · ${r.data.reduce((a, d) => a + d.chunks, 0)} passages`);
+        reset();
+        onOpenChange(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Upload failed");
+        setBusy(false);
+      }
+      return;
+    }
     const docs = kind === "upload" ? files.length : kind === "web" ? 20 + (path.length % 60) : 6 + (path.length % 30);
     const label = kind === "upload" ? (files.length === 1 ? files[0].name : `${files.length} uploaded files`) : kind === "web" ? path.trim().replace(/^https?:\/\//, "").replace(/\/$/, "") : path.trim();
     startSourceSync(kb.id, { appId: meta.appId, label, docs, status: "syncing", lastSync: "syncing…" });

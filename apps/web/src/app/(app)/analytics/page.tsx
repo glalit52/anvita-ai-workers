@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ChartColumn, Download } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -11,7 +11,8 @@ import { Segmented } from "@/components/ui/tabs";
 import { Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { useApp } from "@/lib/store";
-import { agentShareByTeam, teamMembers, usage90, workerTeam } from "@/lib/mock/analytics";
+import { agentShareByTeam, teamMembers, usage90 as demoUsage90, workerTeam, type DailyUsage } from "@/lib/mock/analytics";
+import { get, isLive } from "@/lib/api";
 import { downloadCSV } from "@/lib/download";
 import { formatCredits } from "@/lib/utils";
 
@@ -35,6 +36,38 @@ function pctDelta(cur: number, prev: number | null, invert = false) {
   return { value: `${sign}${Math.abs(d).toFixed(0)}%`, positive: invert ? d <= 0 : d >= 0 };
 }
 
+interface Overview {
+  byDay: { day: string; runs: number; agent: number; workers: number; automated: number }[];
+  byMember: { name: string; runs: number; credits: number; succeeded: number }[];
+  byWorker: { workerId: string; name: string; runs: number; succeeded: number; credits: number }[];
+}
+
+/** Live mode: 90 days of real usage, shaped like the demo series. */
+function useLiveUsage(days: number) {
+  const [series, setSeries] = useState<DailyUsage[] | null>(null);
+  const [period, setPeriod] = useState<Overview | null>(null);
+  useEffect(() => {
+    if (!isLive()) return;
+    get<Overview>("/analytics/overview?days=90")
+      .then((o) => {
+        const map = new Map(o.byDay.map((d) => [d.day, d]));
+        setSeries(
+          Array.from({ length: 90 }, (_, i) => {
+            const date = new Date(Date.now() - (89 - i) * 86400_000);
+            const d = map.get(date.toISOString().slice(0, 10));
+            return { day: date.toLocaleDateString("en-IN", { day: "numeric", month: "short" }), agent: d?.agent ?? 0, workers: d?.workers ?? 0, voice: 0, runs: d?.runs ?? 0, automated: d && d.runs ? Math.round((d.automated / d.runs) * 100) : 0 };
+          }),
+        );
+      })
+      .catch(() => setSeries([]));
+  }, []);
+  useEffect(() => {
+    if (!isLive()) return;
+    get<Overview>(`/analytics/overview?days=${days}`).then(setPeriod).catch(() => {});
+  }, [days]);
+  return { series, period };
+}
+
 export default function AnalyticsPage() {
   const workers = useApp((s) => s.workers);
   const [range, setRange] = useState<Range>("30");
@@ -42,6 +75,8 @@ export default function AnalyticsPage() {
   const [workerId, setWorkerId] = useState<string>("all");
   const days = Number(range);
   const worker = workers.find((w) => w.id === workerId) ?? null;
+  const liveUsage = useLiveUsage(days);
+  const usage90 = isLive() ? (liveUsage.series ?? []) : demoUsage90;
 
   const activeWorkers = workers.filter((w) => w.runs30d > 0);
   const totalRuns30 = activeWorkers.reduce((a, w) => a + w.runs30d, 0) || 1;
@@ -64,7 +99,7 @@ export default function AnalyticsPage() {
         automated: automation ? Math.round(automation + (d.automated - 80) * 0.4) : 0,
       };
     });
-  }, [worker, totalRuns30, nonVoiceRuns]);
+  }, [worker, totalRuns30, nonVoiceRuns, usage90]);
 
   const data = scoped.slice(-days);
   const prev = scoped.length >= days * 2 ? scoped.slice(-days * 2, -days) : null;
@@ -89,6 +124,14 @@ export default function AnalyticsPage() {
     .sort((a, b) => b.hours - a.hours);
 
   const teams = useMemo(() => {
+    // Live: attribute Ask Anvita usage to the people who ran it; Workers as one row each.
+    if (isLive()) {
+      const p = liveUsage.period;
+      if (!p) return [];
+      const people = p.byMember.map((m) => ({ team: m.name, workers: 0, runs: m.runs, hours: Math.round((m.succeeded * 12) / 60), credits: m.credits }));
+      const ws = p.byWorker.filter((w) => !worker || w.workerId === worker.id).map((w) => ({ team: `${w.name} (Worker)`, workers: 1, runs: w.runs, hours: Math.round((w.succeeded * 12) / 60), credits: w.credits }));
+      return [...(worker ? [] : people), ...ws].sort((a, b) => b.credits - a.credits);
+    }
     const agentCredits = sum(usage90.slice(-days), "agent");
     const map = new Map<string, { team: string; workers: number; runs: number; hours: number; credits: number }>();
     for (const t of Object.keys(agentShareByTeam)) map.set(t, { team: t, workers: 0, runs: 0, hours: 0, credits: Math.round(agentCredits * agentShareByTeam[t]) });
@@ -105,7 +148,7 @@ export default function AnalyticsPage() {
     let rows = [...map.values()].filter((r) => r.workers > 0 || r.credits > 0);
     if (worker) rows = rows.filter((r) => r.team === workerTeam(worker));
     return rows.sort((a, b) => b.credits - a.credits);
-  }, [workers, days, worker]);
+  }, [workers, days, worker, liveUsage.period, usage90]);
 
   const exportCsv = () => {
     const rows = data.map((d) => ({
@@ -300,13 +343,13 @@ export default function AnalyticsPage() {
 
           <Card className="mt-6">
             <CardHeader>
-              <CardTitle>By team · {days} days</CardTitle>
-              <p className="text-[12.5px] text-muted-foreground">Worker runs plus Ask Anvita usage attributed to each team</p>
+              <CardTitle>{isLive() ? "By person & Worker" : "By team"} · {days} days</CardTitle>
+              <p className="text-[12.5px] text-muted-foreground">{isLive() ? "Ask Anvita usage by the person who ran it, plus each Worker's runs" : "Worker runs plus Ask Anvita usage attributed to each team"}</p>
             </CardHeader>
             <Table>
               <THead>
                 <tr>
-                  <TH>Team</TH>
+                  <TH>{isLive() ? "Person / Worker" : "Team"}</TH>
                   <TH className="text-right">Members</TH>
                   <TH className="text-right">Workers</TH>
                   <TH className="text-right">Runs</TH>
@@ -319,7 +362,7 @@ export default function AnalyticsPage() {
                 {teams.map((t) => (
                   <TR key={t.team}>
                     <TD className="font-medium">{t.team}</TD>
-                    <TD className="text-right tabular-nums">{teamMembers[t.team] ?? "—"}</TD>
+                    <TD className="text-right tabular-nums">{isLive() ? (t.workers ? "—" : 1) : (teamMembers[t.team] ?? "—")}</TD>
                     <TD className="text-right tabular-nums">{t.workers}</TD>
                     <TD className="text-right tabular-nums">{t.runs.toLocaleString("en-IN")}</TD>
                     <TD className="text-right tabular-nums">{t.hours.toLocaleString("en-IN")} h</TD>

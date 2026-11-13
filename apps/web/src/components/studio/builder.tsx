@@ -14,10 +14,15 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { toast } from "sonner";
-import { PanelLeftClose, PanelLeftOpen, Play, Sparkles } from "lucide-react";
+import { ListChecks, PanelLeftClose, PanelLeftOpen, Play, Sparkles } from "lucide-react";
 import type { NodeKind, Worker, WorkerNode } from "@/lib/types";
 import { cn, sleep } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Label, Textarea } from "@/components/ui/input";
+import { isLive } from "@/lib/api";
+import { fetchTrace, startTestRun, TERMINAL, useWorkflowCatalog, validateGraph, type Issue, type Trace } from "@/lib/workflow";
+import { IssuesList, TraceView } from "./test-run";
 import { useApp } from "@/lib/store";
 import { WorkerFlowNode, type FlowNode } from "./flow-node";
 import { nodeMeta, paletteKinds } from "./node-meta";
@@ -51,7 +56,13 @@ export function Builder({ worker }: { worker: Worker }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(true);
-  const [panel, setPanel] = useState<"autopilot" | "inspector">("autopilot");
+  const [panel, setPanel] = useState<"autopilot" | "inspector" | "checks">("autopilot");
+  const live = isLive();
+  const catalog = useWorkflowCatalog();
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [trace, setTrace] = useState<Trace | null>(null);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testInput, setTestInput] = useState("");
   const [simulating, setSimulating] = useState(false);
   const simulatingRef = useRef(false);
 
@@ -77,6 +88,78 @@ export function Builder({ worker }: { worker: Worker }) {
     }, 600);
     return () => clearTimeout(t);
   }, [nodes, edges, updateWorker, worker.id]);
+
+  const graph = useCallback(
+    () => ({
+      nodes: nodes.map((n) => ({ ...n.data.node, x: Math.round(n.position.x), y: Math.round(n.position.y) })),
+      edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: typeof e.label === "string" ? e.label : undefined })),
+    }),
+    [nodes, edges],
+  );
+
+  // Live mode: check the graph as it changes (loops, missing actions, bad expressions…).
+  const graphKey = JSON.stringify(nodes.map((n) => [n.id, n.data.node.kind, n.data.node.config, n.data.node.appId])) + JSON.stringify(edges.map((e) => [e.source, e.target, e.label]));
+  useEffect(() => {
+    if (!live) return;
+    const t = setTimeout(() => {
+      const g = graph();
+      validateGraph(worker.id, g.nodes, g.edges).then((r) => setIssues(r.issues), () => {});
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphKey, live, worker.id]);
+
+  const issueLevel = useMemo(() => {
+    const m = new Map<string, "error" | "warning">();
+    for (const i of issues) if (i.nodeId && m.get(i.nodeId) !== "error") m.set(i.nodeId, i.level);
+    return m;
+  }, [issues]);
+  const traceById = useMemo(() => new Map((trace?.nodes ?? []).map((n) => [n.id, n])), [trace]);
+  const STATUS = { running: "running", done: "done", failed: "error", waiting: "waiting", skipped: "skipped", pending: undefined } as const;
+  const viewNodes = useMemo(
+    () =>
+      nodes.map((n) => {
+        const t = traceById.get(n.id);
+        const status = n.data.status ?? (t ? STATUS[t.status] : undefined);
+        const issue = issueLevel.get(n.id);
+        return status === n.data.status && !issue && !t ? n : { ...n, data: { ...n.data, status, issue, detail: t?.status === "failed" ? (t.error ?? undefined) : (t?.detail ?? undefined) } };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, traceById, issueLevel],
+  );
+
+  const runTest = async () => {
+    let inputs: Record<string, unknown> = {};
+    try {
+      inputs = testInput.trim() ? JSON.parse(testInput) : {};
+    } catch {
+      toast.error("Test input must be JSON, e.g. {\"text\": \"Where is my order #1042?\"}");
+      return;
+    }
+    setTestOpen(false);
+    setSimulating(true);
+    setPanel("checks");
+    setTrace(null);
+    try {
+      const g = graph();
+      const run = await startTestRun(worker.id, g.nodes, g.edges, inputs);
+      for (let i = 0; i < 600; i++) {
+        const t = await fetchTrace(run.id);
+        setTrace(t);
+        if (TERMINAL.has(t.status) || t.status.startsWith("waiting")) {
+          if (t.status === "succeeded") toast.success("Test run finished");
+          else if (t.status === "failed") toast.error("Test run failed — see the step that failed");
+          else toast.message(t.status === "waiting_approval" ? "Test run is waiting for an approval" : "Test run is waiting for an app connection");
+          break;
+        }
+        await sleep(800);
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 1.6 } }, eds)),
@@ -153,7 +236,7 @@ export function Builder({ worker }: { worker: Worker }) {
       {/* Canvas */}
       <div className="relative min-h-[520px] flex-1 bg-subtle">
         <ReactFlow
-          nodes={nodes}
+          nodes={viewNodes}
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
@@ -182,9 +265,35 @@ export function Builder({ worker }: { worker: Worker }) {
           <MiniMap pannable zoomable className="!hidden !rounded-lg !border !border-border md:!block" nodeColor={(n) => nodeMeta[(n as FlowNode).data.node.kind].color} maskColor="color-mix(in srgb, var(--background) 70%, transparent)" />
         </ReactFlow>
         <div className="absolute left-3 top-3 flex gap-2">
-          <Button size="sm" variant="outline" className="shadow-soft" onClick={simulate} disabled={simulating}>
-            <Play /> {simulating ? "Running…" : "Dry run"}
-          </Button>
+          {live ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shadow-soft"
+                disabled={simulating}
+                onClick={() => {
+                  if (!testInput) {
+                    const trig = nodes.find((n) => n.data.node.kind === "trigger")?.data.node;
+                    const type = String(trig?.config?.triggerType ?? (trig?.config?.cron ? "schedule" : "channel"));
+                    setTestInput(type === "channel" ? JSON.stringify({ text: "Hi, where is my order #1042?" }, null, 2) : "{}");
+                  }
+                  setTestOpen(true);
+                }}
+              >
+                <Play /> {simulating ? "Running…" : "Test run"}
+              </Button>
+              {trace && !simulating && (
+                <Button size="sm" variant="ghost" className="shadow-soft" onClick={() => setTrace(null)}>
+                  Clear results
+                </Button>
+              )}
+            </>
+          ) : (
+            <Button size="sm" variant="outline" className="shadow-soft" onClick={simulate} disabled={simulating}>
+              <Play /> {simulating ? "Running…" : "Dry run"}
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="shadow-soft lg:hidden" onClick={() => addNode("agent")}>
             + Step
           </Button>
@@ -196,26 +305,52 @@ export function Builder({ worker }: { worker: Worker }) {
         </div>
         <div className="absolute right-3 top-3 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11.5px] text-muted-foreground shadow-soft">
           {nodes.length} steps · {edges.length} connections · {saved === "saving" ? "saving…" : "saved"}
+          {live && (
+            <button type="button" onClick={() => setPanel("checks")} className={cn("ml-2 font-medium cursor-pointer", issues.some((i) => i.level === "error") ? "text-danger" : issues.length ? "text-saffron" : "text-success")}>
+              · {issues.filter((i) => i.level === "error").length ? `${issues.filter((i) => i.level === "error").length} to fix` : issues.length ? `${issues.length} to check` : "ready"}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Right panel */}
       <div className="flex w-full shrink-0 flex-col border-t border-border bg-card lg:w-[360px] lg:border-l lg:border-t-0">
         <div className="flex border-b border-border">
-          {(["autopilot", "inspector"] as const).map((p) => (
+          {(live ? (["autopilot", "inspector", "checks"] as const) : (["autopilot", "inspector"] as const)).map((p) => (
             <button
               key={p}
               onClick={() => setPanel(p)}
               className={cn("flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-[13px] font-medium capitalize cursor-pointer", panel === p ? "border-primary text-foreground" : "border-transparent text-muted-foreground")}
             >
               {p === "autopilot" && <Sparkles className="size-3.5 text-primary" />}
-              {p === "inspector" ? (selected ? "Step settings" : "Inspector") : "Autopilot"}
+              {p === "checks" && <ListChecks className="size-3.5" />}
+              {p === "inspector" ? (selected ? "Step settings" : "Inspector") : p === "checks" ? (trace ? "Test run" : "Checks") : "Autopilot"}
             </button>
           ))}
         </div>
         <div className="min-h-0 flex-1">
           {panel === "inspector" ? (
-            <Inspector node={selected} onChange={updateNode} onDelete={deleteNode} />
+            <Inspector node={selected} onChange={updateNode} onDelete={deleteNode} issues={issues} catalog={catalog} />
+          ) : panel === "checks" ? (
+            <div className="flex max-h-[calc(100dvh-180px)] flex-col gap-5 overflow-y-auto p-4 scrollbar-thin">
+              {trace && (
+                <section>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Test run</p>
+                  <TraceView trace={trace} onSelectNode={(id) => setSelectedId(id)} />
+                </section>
+              )}
+              <section>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Checks</p>
+                <IssuesList
+                  issues={issues}
+                  titleOf={(id) => nodes.find((n) => n.id === id)?.data.node.title ?? id}
+                  onSelectNode={(id) => {
+                    setSelectedId(id);
+                    setPanel("inspector");
+                  }}
+                />
+              </section>
+            </div>
           ) : (
             <Autopilot
               worker={worker}
@@ -227,6 +362,26 @@ export function Builder({ worker }: { worker: Worker }) {
           )}
         </div>
       </div>
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent className="max-w-lg">
+          <div className="flex flex-col gap-3 p-6">
+            <DialogTitle>Test run</DialogTitle>
+            <p className="text-[13px] text-muted-foreground">Runs this draft for real with your connected apps. Actions that need approval wait in Approvals, as in production.</p>
+            <div className="grid gap-1.5">
+              <Label htmlFor="test-input">Trigger input (JSON)</Label>
+              <Textarea id="test-input" rows={6} className="font-mono text-[12px]" value={testInput} onChange={(e) => setTestInput(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setTestOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={runTest}>
+                <Play /> Run test
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

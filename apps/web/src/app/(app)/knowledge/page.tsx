@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { confirm } from "@/components/ui/confirm";
 import { AppLogo } from "@/components/brand/app-logo";
 import { AddSourceDialog, KbFormDialog } from "@/components/knowledge/dialogs";
+import { SearchStatus } from "@/components/knowledge/search-status";
 import { useApp } from "@/lib/store";
 import type { KnowledgeBase } from "@/lib/types";
 import { cn, sleep } from "@/lib/utils";
@@ -149,6 +150,7 @@ export default function KnowledgePage() {
           </Button>
         }
       />
+      <SearchStatus />
 
       {!kb ? (
         <div className="mt-6">

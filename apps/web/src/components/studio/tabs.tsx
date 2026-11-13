@@ -1,12 +1,12 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bot, Check, CircleX, Clock, Coins, Copy, FlaskConical, Loader2, Pause, Play, Plus, RotateCcw, ShieldCheck, Sparkles, Trash2, Upload, User, Users, X } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { EvalCase, RunRecord, Worker } from "@/lib/types";
-import { runs as seedRuns } from "@/lib/mock/workers";
+import { isLive } from "@/lib/api";
 import { appById } from "@/lib/mock/apps";
 import { useApp, useSetting } from "@/lib/store";
 import { parseCSV } from "@/lib/download";
@@ -23,6 +23,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { EmptyState } from "@/components/ui/misc";
 import { confirm } from "@/components/ui/confirm";
 import { cn, sleep } from "@/lib/utils";
+import { fetchRun, type Trace } from "@/lib/workflow";
+import { TraceView } from "./test-run";
 
 const uid = () => Math.random().toString(36).slice(2, 8);
 const EMPTY: EvalCase[] = [];
@@ -361,14 +363,25 @@ const runSteps = [
 
 export function RunsTab({ worker }: { worker: Worker }) {
   const [open, setOpen] = useState<RunRecord | null>(null);
+  const [detail, setDetail] = useState<{ trace: Trace | null; stepLog: { label: string; status: string; name: string; credits: number }[]; output: unknown; error: string | null } | null>(null);
+  useEffect(() => {
+    if (!open || !isLive()) return setDetail(null);
+    let alive = true;
+    fetchRun(open.id).then((r) => alive && setDetail({ trace: r.trace ? { runId: r.id, status: r.status, error: r.error, ...r.trace } : null, stepLog: r.stepLog ?? [], output: r.output ?? null, error: r.error ?? null }), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [open]);
   const [replay, setReplay] = useState(-1);
   const cases = useApp((s) => s.evalCases[worker.id]) ?? EMPTY;
   const setCases = useApp((s) => s.setEvalCases);
-  const own = seedRuns.filter((r) => r.worker === worker.name);
-  const list: RunRecord[] = own.length
+  const allRuns = useApp((s) => s.runs);
+  const own = allRuns.filter((r) => r.worker === worker.name);
+  // Demo mode shows sample history for seeded Workers that have no named runs.
+  const list: RunRecord[] = own.length || isLive()
     ? own
     : worker.runs30d > 0
-      ? seedRuns.slice(0, 5).map((r) => ({ ...r, worker: worker.name }))
+      ? allRuns.slice(0, 5).map((r) => ({ ...r, worker: worker.name }))
       : [];
 
   const doReplay = async () => {
@@ -433,6 +446,25 @@ export function RunsTab({ worker }: { worker: Worker }) {
             </p>
           </div>
           <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+            {isLive() ? (
+              !detail ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : detail.trace ? (
+                <TraceView trace={detail.trace} />
+              ) : (
+                <ol className="flex flex-col gap-2">
+                  {detail.error && <p className="rounded-lg bg-danger-soft p-2.5 text-[12px] text-danger">{detail.error}</p>}
+                  {detail.stepLog.filter((s) => s.name !== "model.turn").map((s, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[13px]">
+                      <Badge variant={s.status === "done" ? "success" : "danger"}>{s.status}</Badge> {s.label}
+                      <span className="ml-auto text-[12px] text-muted-foreground">{s.credits} cr</span>
+                    </li>
+                  ))}
+                  {detail.stepLog.length === 0 && <p className="text-[13px] text-muted-foreground">No steps recorded.</p>}
+                </ol>
+              )
+            ) : (
+            <>
             <ol className="relative flex flex-col gap-4 border-l border-border pl-5">
               {runSteps.map((s, i) => {
                 const state = replay === -1 || replay > i ? "done" : replay === i ? "running" : "pending";
@@ -450,10 +482,12 @@ export function RunsTab({ worker }: { worker: Worker }) {
             <div className="mt-6 rounded-xl border border-border bg-subtle p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
               {`{ "intent": "return_refund", "sentiment": "negative", "order_id": "KF-20931", "language": "en", "decision": "eligible", "citations": ["policies/returns.md#7-day-window"] }`}
             </div>
+            </>
+            )}
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={doReplay} disabled={replay >= 0 && replay < runSteps.length}>
+              {!isLive() && <Button size="sm" variant="outline" onClick={doReplay} disabled={replay >= 0 && replay < runSteps.length}>
                 {replay >= 0 && replay < runSteps.length ? <Loader2 className="animate-spin" /> : <RotateCcw />} Replay with draft v{worker.version + 1}
-              </Button>
+              </Button>}
               <Button
                 size="sm"
                 variant="outline"
@@ -781,6 +815,22 @@ export function SettingsTab({ worker }: { worker: Worker }) {
             <Label htmlFor="w-persona">Persona & tone</Label>
             <Textarea id="w-persona" rows={3} value={form.persona} onChange={(e) => setForm({ ...form, persona: e.target.value })} />
           </div>
+          {isLive() && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="w-engine">How it runs</Label>
+              <Select
+                id="w-engine"
+                value={worker.engine ?? "graph"}
+                onChange={(e) => {
+                  updateWorker(worker.id, { engine: e.target.value as "graph" | "agent" });
+                  toast.success(e.target.value === "graph" ? "Runs the workflow step by step" : "Runs as an autonomous agent guided by the workflow");
+                }}
+              >
+                <option value="graph">Workflow — every step runs exactly as built (recommended)</option>
+                <option value="agent">Autonomous agent — the AI follows the workflow as guidance</option>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card>

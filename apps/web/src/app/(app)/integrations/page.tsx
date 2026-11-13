@@ -1,5 +1,8 @@
 "use client";
 import { useState } from "react";
+import { isLive, post } from "@/lib/api";
+import { load } from "@/lib/backend";
+import { removeCustomApi, useCustomApis } from "@/lib/custom-apis";
 import { toast } from "sonner";
 import { Check, ChevronRight, Code2, Plug, Plus, RefreshCw, Search, Server, Trash2, TriangleAlert } from "lucide-react";
 import { PageContainer } from "@/components/shell/app-shell";
@@ -28,6 +31,7 @@ export default function IntegrationsPage() {
   const [managing, setManaging] = useState<string | null>(null);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [openApiOpen, setOpenApiOpen] = useState(false);
+  const customApis = useCustomApis();
   const connectedIds = new Set(connections.map((c) => c.appId));
   const catalog = apps.filter((a) => (cat === "All" || a.category === cat) && (a.name.toLowerCase().includes(q.toLowerCase()) || a.description.toLowerCase().includes(q.toLowerCase())));
   const issues = connections.filter((c) => c.status !== "healthy").length;
@@ -82,6 +86,8 @@ export default function IntegrationsPage() {
                       <Badge variant="outline" className="capitalize">
                         {c.scope}
                       </Badge>
+                      {c.mode === "demo" && !["web", "sandbox"].includes(c.appId) && <Badge variant="default">Sample data</Badge>}
+                      {c.mode === "live" && c.account && <span className="truncate text-[11.5px] text-muted-foreground">{c.account}</span>}
                     </div>
                     <p className="truncate text-[12px] text-muted-foreground">
                       {c.connectedBy} · {c.actionsUsed30d.toLocaleString("en-IN")} actions / 30d
@@ -117,13 +123,51 @@ export default function IntegrationsPage() {
       )}
 
       <div className="mt-10 flex items-center justify-between gap-3">
-        <h2 className="text-[15px] font-semibold">MCP servers & custom APIs ({mcpServers.length})</h2>
+        <h2 className="text-[15px] font-semibold">MCP servers & custom APIs ({mcpServers.length + customApis.length})</h2>
         <Button size="sm" variant="ghost" onClick={() => setMcpOpen(true)}>
           <Plus /> Add
         </Button>
       </div>
       <Card className="mt-3 divide-y divide-border">
-        {mcpServers.length === 0 && <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">No MCP servers or imported APIs yet.</p>}
+        {mcpServers.length === 0 && customApis.length === 0 && <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">No MCP servers or imported APIs yet.</p>}
+        {customApis.map((api) => (
+          <div key={api.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-info-soft text-info">
+              <Code2 className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-[13.5px] font-medium">{api.name}</p>
+                <Badge variant="outline">OpenAPI</Badge>
+              </div>
+              <p className="truncate font-mono text-[11.5px] text-muted-foreground">
+                {api.baseUrl} · api.{api.slug}.*
+              </p>
+            </div>
+            <span className="text-[12px] text-muted-foreground">
+              {api.operations.filter((o) => o.enabled).length} actions · {api.authType === "none" ? "no auth" : api.hasSecret ? api.authType : `${api.authType} (no key)`}
+            </span>
+            <Badge variant={api.enabled ? "success" : "outline"}>{api.enabled ? "Active" : "Off"}</Badge>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`Remove ${api.name}`}
+              className="hover:text-danger"
+              onClick={async () => {
+                if (await confirm({ title: `Remove ${api.name}?`, description: `Its ${api.operations.length} actions will no longer be available to Anvita or Workers.`, confirmLabel: "Remove", danger: true })) {
+                  try {
+                    await removeCustomApi(api.id);
+                    toast(`${api.name} removed`);
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }
+              }}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
         {mcpServers.map((m) => {
           const isApi = m.name.endsWith("(OpenAPI)");
           return (
@@ -135,11 +179,31 @@ export default function IntegrationsPage() {
                   <Badge variant="outline">{isApi ? "OpenAPI" : "MCP"}</Badge>
                 </div>
                 <p className="truncate font-mono text-[11.5px] text-muted-foreground">{m.url}</p>
+                {m.status !== "healthy" && m.lastError && <p className="truncate text-[11.5px] text-danger">{m.lastError}</p>}
               </div>
               <span className="text-[12px] text-muted-foreground">
                 {m.tools} tools · {m.auth === "none" ? "no auth" : m.auth}
               </span>
               <Badge variant={m.status === "healthy" ? "success" : "danger"}>{m.status === "healthy" ? "Healthy" : "Error"}</Badge>
+              {isLive() && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Re-check ${m.name}`}
+                  onClick={async () => {
+                    try {
+                      const r = await post<{ status: string; tools: number; lastError?: string }>(`/mcp-servers/${m.id}/check`);
+                      await load.mcp();
+                      if (r.status === "healthy") toast.success(`${m.name}: ${r.tools} tools`);
+                      else toast.error(r.lastError ?? "Server unreachable");
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Check failed");
+                    }
+                  }}
+                >
+                  <RefreshCw />
+                </Button>
+              )}
               <Button
                 size="icon-sm"
                 variant="ghost"

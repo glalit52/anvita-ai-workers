@@ -1,4 +1,5 @@
 "use client";
+import { tourDone } from "@/components/shell/product-tour";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Globe, Loader2, Lock, Sparkles } from "lucide-react";
@@ -7,6 +8,8 @@ import { AppLogo } from "@/components/brand/app-logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { isLive } from "@/lib/api";
+import { ConnectDialog } from "@/components/integrations/dialogs";
 import { appById } from "@/lib/mock/apps";
 import { cn, sleep } from "@/lib/utils";
 import { useApp, useSetting } from "@/lib/store";
@@ -34,11 +37,12 @@ export default function OnboardingPage() {
   const [connected, setConnected] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [learn, setLearn] = useState<"idle" | "running" | "done">("idle");
-  const [company, setCompany] = useSetting("workspace.name", "Kesar Foods");
+  const [company, setCompany] = useSetting("workspace.name", useApp.getState().workspaceInfo.name || "Kesar Foods");
   const [region, setRegion] = useSetting("workspace.region", "India (Mumbai)");
   const [, setHomeChannel] = useSetting("workspace.homeChannel", "slack");
   const [, setGoals] = useSetting("onboarding.goals", "");
   const connectApp = useApp((s) => s.connectApp);
+  const [dialogApp, setDialogApp] = useState<string | null>(null);
   const storeConnections = useApp((s) => s.connections);
   const updateProfile = useApp((s) => s.updateProfile);
   const [sources, setSources] = useState<string[]>(LEARN_SOURCES);
@@ -187,6 +191,8 @@ export default function OnboardingPage() {
                           variant="outline"
                           disabled={connecting === a}
                           onClick={async () => {
+                            // Live: the real connect flow (OAuth comes back here, API keys are verified).
+                            if (isLive()) return setDialogApp(a);
                             setConnecting(a);
                             await sleep(800);
                             setConnected((c) => [...c, a]);
@@ -202,6 +208,7 @@ export default function OnboardingPage() {
                 })}
               </div>
               <p className="text-[12.5px] text-muted-foreground">{connected.length} connected · 3,000+ more in Integrations</p>
+              <ConnectDialog app={dialogApp ? (appById[dialogApp] ?? null) : null} onClose={() => setDialogApp(null)} returnTo="/onboarding" />
             </div>
           )}
 
@@ -253,7 +260,7 @@ export default function OnboardingPage() {
                   ["Chase overdue B2B invoices on WhatsApp", "₹18.4L overdue"],
                   ["Daily RTO & delivery exceptions digest", "~2 h/week"],
                 ].map(([t, s], i) => (
-                  <button key={t} onClick={() => router.push("/home")} className="flex items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/30 cursor-pointer">
+                  <button key={t} onClick={() => router.push(tourDone() ? "/home" : "/home?tour=1")} className="flex items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/30 cursor-pointer">
                     <span className="flex size-7 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-soft-foreground">{i + 1}</span>
                     <span className="flex-1 text-[13.5px] font-medium">{t}</span>
                     <span className="text-[12px] text-success">{s}</span>
@@ -280,7 +287,7 @@ export default function OnboardingPage() {
                 </Button>
               </div>
             ) : (
-              <Button onClick={() => router.push("/home")}>
+              <Button onClick={() => router.push(tourDone() ? "/home" : "/home?tour=1")}>
                 Go to Anvita <ArrowRight />
               </Button>
             )}

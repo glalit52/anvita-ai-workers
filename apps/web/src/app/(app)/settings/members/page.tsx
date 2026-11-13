@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { MailPlus, MoreHorizontal, Search, Trash2, UserPlus } from "lucide-react";
+import { isLive, post } from "@/lib/api";
 import { useApp } from "@/lib/store";
 import type { Role } from "@/lib/types";
 import { Card } from "@/components/ui/card";
@@ -180,6 +181,21 @@ export default function MembersPage() {
                         >
                           Copy email
                         </DropdownMenuItem>
+                        {isLive() && m.status === "active" && (
+                          <DropdownMenuItem
+                            onSelect={async () => {
+                              if (!(await confirm({ title: `Sign ${m.name} out everywhere?`, description: "All their sessions end immediately (e.g. a lost laptop). They can sign in again.", confirmLabel: "Sign out", danger: true }))) return;
+                              try {
+                                const r = await post<{ revoked: number }>(`/members/${m.id}/sign-out`);
+                                toast(`${m.name} signed out of ${r.revoked} session${r.revoked === 1 ? "" : "s"}`);
+                              } catch (e) {
+                                toast.error((e as Error).message);
+                              }
+                            }}
+                          >
+                            Sign out of all devices
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-danger [&_svg]:text-danger"

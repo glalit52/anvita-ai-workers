@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Check, CreditCard, Download, Loader2, Smartphone } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -12,8 +12,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { SectionHeader, SettingRow } from "@/components/settings-section";
 import { Field } from "@/components/settings/field";
 import { useApp, useSetting } from "@/lib/store";
-import { workspace } from "@/lib/mock/workspace";
 import { downloadFile } from "@/lib/download";
+import { isLive } from "@/lib/api";
+import { checkout, useBillingInfo, type BillingInfo } from "@/lib/billing";
+import { BillingProfileCard, LiveInvoices, LivePlans } from "@/components/settings/live-billing";
 import { cn, formatCredits, sleep } from "@/lib/utils";
 
 const plans = [
@@ -37,18 +39,23 @@ const invoices = [
 
 const inr = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 
-function TopUpDialog({ open, onOpenChange, payment }: { open: boolean; onOpenChange: (o: boolean) => void; payment: string }) {
+function TopUpDialog({ open, onOpenChange, payment, info }: { open: boolean; onOpenChange: (o: boolean) => void; payment: string; info: BillingInfo | null }) {
   const buy = useApp((s) => s.buyCredits);
+  const profile = useApp((s) => s.profile);
   const [pick, setPick] = useState(1);
   const [paying, setPaying] = useState(false);
-  const pack = packs[pick];
+  // Live: prices come from the server (incl. volume discount); tax is added at checkout.
+  const livePacks = isLive() && info?.packs.length ? info.packs.map((p) => ({ credits: p.credits, price: p.price, tag: p.discount ? `Save ${Math.round(p.discount * 100)}%` : undefined, total: p.total })) : null;
+  const list: { credits: number; price: number; tag?: string; total?: number }[] = livePacks ?? packs;
+  const pack = list[Math.min(pick, list.length - 1)];
+  const provider = info?.razorpay ? "Razorpay (UPI, cards, netbanking)" : info?.stripe ? "Stripe Checkout" : null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogTitle>Buy a credit top-up</DialogTitle>
         <DialogDescription className="mt-1">Top-up credits never expire and are used after your monthly plan credits.</DialogDescription>
         <div className="mt-5 grid gap-2">
-          {packs.map((p, i) => (
+          {list.map((p, i) => (
             <button
               key={p.credits}
               onClick={() => setPick(i)}
@@ -62,7 +69,7 @@ function TopUpDialog({ open, onOpenChange, payment }: { open: boolean; onOpenCha
           ))}
         </div>
         <p className="mt-3 text-[12px] text-muted-foreground">
-          + 18% GST ({inr(Math.round(pack.price * 0.18))}) · charged to {payment}
+          + {Math.round((info?.taxRate ?? 0.18) * 100)}% GST ({inr(Math.round(pack.price * (info?.taxRate ?? 0.18)))}) · {isLive() ? (provider ? `pay with ${provider}` : "recorded as a manual top-up (no payment provider configured)") : `charged to ${payment}`}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -72,14 +79,28 @@ function TopUpDialog({ open, onOpenChange, payment }: { open: boolean; onOpenCha
             disabled={paying}
             onClick={async () => {
               setPaying(true);
+              if (isLive() && provider) {
+                try {
+                  const result = await checkout(pack.credits, { name: profile.name, email: profile.email });
+                  if (result === "paid") {
+                    toast.success(`${formatCredits(pack.credits)} credits added`);
+                    onOpenChange(false);
+                  }
+                  if (result === "redirected") return;
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Payment failed");
+                }
+                setPaying(false);
+                return;
+              }
               await sleep(1100);
               buy(pack.credits);
               setPaying(false);
               onOpenChange(false);
-              toast.success(`${formatCredits(pack.credits)} credits added — GST invoice emailed`);
+              toast.success(isLive() ? `${formatCredits(pack.credits)} credits added` : `${formatCredits(pack.credits)} credits added — GST invoice emailed`);
             }}
           >
-            {paying ? <Loader2 className="animate-spin" /> : <CreditCard />} Pay {inr(Math.round(pack.price * 1.18))}
+            {paying ? <Loader2 className="animate-spin" /> : <CreditCard />} Pay {inr(pack.total ?? Math.round(pack.price * (1 + (info?.taxRate ?? 0.18))))}
           </Button>
         </div>
       </DialogContent>
@@ -143,6 +164,16 @@ function PaymentDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenCh
 }
 
 export default function BillingPage() {
+  const workspace = useApp((s) => s.workspaceInfo);
+  const { info: billing, payments, refresh: refreshBilling } = useBillingInfo();
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const c = q.get("checkout");
+    if (!c) return;
+    if (c === "success") toast.success("Payment received — credits appear as soon as the provider confirms it");
+    else toast("Checkout cancelled");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const used = useApp((s) => s.creditsUsed);
   const total = useApp((s) => s.creditsTotal);
   const log = useApp((s) => s.log);
@@ -182,6 +213,9 @@ export default function BillingPage() {
         </p>
       </Card>
 
+      {isLive() ? (
+        <LivePlans />
+      ) : (
       <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
           const current = plan === p.name;
@@ -221,6 +255,7 @@ export default function BillingPage() {
           );
         })}
       </div>
+      )}
 
       <h3 className="mb-3 mt-8 text-[15px] font-semibold">Budgets & alerts</h3>
       <Card>
@@ -233,11 +268,13 @@ export default function BillingPage() {
         <SettingRow title="Alerts" description="Notify owners at 50%, 80% and 100% of the monthly plan">
           <Switch checked={alerts} onCheckedChange={(v) => { setAlerts(v); toast.success(`Budget alerts ${v ? "on" : "off"}`); }} aria-label="Budget alerts" />
         </SettingRow>
-        <SettingRow title="Payment method" description={`${payment} · GST invoice to Kesar Foods Pvt Ltd (27AAKCK4410C1ZP)`}>
-          <Button variant="outline" size="sm" onClick={() => setPayOpen(true)}>
-            <CreditCard /> Update
-          </Button>
-        </SettingRow>
+        {!isLive() && (
+          <SettingRow title="Payment method" description={`${payment} · GST invoice to Kesar Foods Pvt Ltd (27AAKCK4410C1ZP)`}>
+            <Button variant="outline" size="sm" onClick={() => setPayOpen(true)}>
+              <CreditCard /> Update
+            </Button>
+          </SettingRow>
+        )}
         <div className="flex justify-end gap-2 px-5 py-3">
           <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => { setCapDraft(cap); setAskDraft(ask); }}>
             Discard
@@ -257,14 +294,25 @@ export default function BillingPage() {
         </div>
       </Card>
 
+      {isLive() && (
+        <>
+          <h3 className="mb-3 mt-8 text-[15px] font-semibold">Billing details (GST)</h3>
+          <BillingProfileCard />
+        </>
+      )}
+
       <h3 className="mb-3 mt-8 text-[15px] font-semibold">Invoices</h3>
+      {isLive() ? (
+        <LiveInvoices />
+      ) : (
       <Card className="divide-y divide-border">
-        {invoices.map((i) => (
+        {isLive() && payments.length === 0 && <p className="px-5 py-4 text-[13px] text-muted-foreground">No payments yet.</p>}
+        {(isLive() ? payments.map((p) => ({ id: p.id, date: new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }), amount: p.amount, status: p.status })) : invoices.map((i) => ({ ...i, status: "paid" as const }))).map((i) => (
           <div key={i.id} className="flex items-center gap-3 px-5 py-3 text-[13px]">
             <span className="font-mono text-[12px]">{i.id}</span>
             <span className="flex-1 text-muted-foreground">{i.date}</span>
             <span className="tabular-nums">{inr(i.amount)}</span>
-            <Badge variant="success">Paid</Badge>
+            <Badge variant={i.status === "paid" ? "success" : i.status === "failed" ? "danger" : "default"} className="capitalize">{i.status === "created" ? "Pending" : i.status}</Badge>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -272,7 +320,7 @@ export default function BillingPage() {
               onClick={() =>
                 downloadFile(
                   `${i.id}.txt`,
-                  `TAX INVOICE ${i.id}\nAnvita AI Pvt Ltd · GSTIN 27AAXCA0000A1Z5\nBill to: Kesar Foods Pvt Ltd · GSTIN 27AAKCK4410C1ZP\nDate: ${i.date}\n\nSubscription (Business plan)  ${inr(Math.round(i.amount / 1.18))}\nIGST 18%                        ${inr(i.amount - Math.round(i.amount / 1.18))}\nTotal                           ${inr(i.amount)}\n`,
+                  `TAX INVOICE ${i.id}\nAnvita AI Pvt Ltd · GSTIN 27AAXCA0000A1Z5\nBill to: ${isLive() ? workspace.name : "Kesar Foods Pvt Ltd · GSTIN 27AAKCK4410C1ZP"}\nDate: ${i.date}\n\n${isLive() ? "Credit top-up               " : "Subscription (Business plan)"}  ${inr(Math.round(i.amount / 1.18))}\nIGST 18%                        ${inr(i.amount - Math.round(i.amount / 1.18))}\nTotal                           ${inr(i.amount)}\n`,
                 )
               }
             >
@@ -281,8 +329,9 @@ export default function BillingPage() {
           </div>
         ))}
       </Card>
+      )}
 
-      <TopUpDialog key={topUp ? "t-open" : "t-closed"} open={topUp} onOpenChange={setTopUp} payment={payment} />
+      <TopUpDialog key={topUp ? "t-open" : "t-closed"} open={topUp} onOpenChange={(o) => { setTopUp(o); if (!o) refreshBilling(); }} payment={payment} info={billing} />
       <PaymentDialog
         key={payOpen ? "p-open" : "p-closed"}
         open={payOpen}

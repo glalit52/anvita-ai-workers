@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useApp } from "@/lib/store";
+import { LiveSync } from "@/components/live-sync";
 
 function Hydrate() {
   const lang = useApp((s) => s.profile.language);
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
         <Hydrate />
+        <LiveSync />
         {children}
         <Toaster position="bottom-right" richColors closeButton toastOptions={{ className: "!rounded-xl" }} />
       </TooltipProvider>

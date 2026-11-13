@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Brain, CircleUser, CreditCard, KeyRound, ScrollText, Shield, ShieldCheck, Users } from "lucide-react";
+import { Bell, Brain, CircleUser, CreditCard, KeyRound, MessagesSquare, ScrollText, Shield, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -9,6 +9,7 @@ const items = [
   { href: "/settings/members", label: "Members & roles", icon: Users },
   { href: "/settings/security", label: "Security & SSO", icon: Shield },
   { href: "/settings/policies", label: "Policies & approvals", icon: ShieldCheck },
+  { href: "/settings/channels", label: "Channels", icon: MessagesSquare },
   { href: "/settings/models", label: "Models & data", icon: Brain },
   { href: "/settings/audit", label: "Audit log", icon: ScrollText },
   { href: "/settings/billing", label: "Billing & usage", icon: CreditCard },

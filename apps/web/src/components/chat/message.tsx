@@ -36,6 +36,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { LogoMark } from "@/components/brand/logo";
 import { AppLogo } from "@/components/brand/app-logo";
 import { ApprovalCard } from "@/components/approvals/approval-card";
+import { isLive } from "@/lib/api";
+import { ConnectDialog } from "@/components/integrations/dialogs";
 import { appById } from "@/lib/mock/apps";
 import { patchBlock, useApp } from "@/lib/store";
 import type { Artifact, ChatBlock, ChatMessage, RunStep } from "@/lib/types";
@@ -143,6 +145,7 @@ function ConnectBlock({ appId, status }: { appId: string; status: "pending" | "c
   const connect = useApp((s) => s.connectApp);
   const app = appById[appId];
   const [loading, setLoading] = useState(false);
+  const [dialog, setDialog] = useState(false);
   return (
     <div className={cn("flex flex-wrap items-center gap-3 rounded-xl border p-3.5", status === "pending" ? "border-primary/40 bg-primary-soft/40" : "border-border bg-subtle")}>
       <AppLogo appId={appId} size={36} />
@@ -157,6 +160,8 @@ function ConnectBlock({ appId, status }: { appId: string; status: "pending" | "c
           <Button
             size="sm"
             onClick={() => {
+              // Live: OAuth / API key / sample data, then come back to this chat (the run resumes on its own).
+              if (isLive()) return setDialog(true);
               setLoading(true);
               setTimeout(() => {
                 connect(appId);
@@ -175,11 +180,11 @@ function ConnectBlock({ appId, status }: { appId: string; status: "pending" | "c
               setLoading(true);
               setTimeout(() => {
                 connect(appId, "workspace");
-                toast.success(`Using the workspace ${app?.name} account`);
+                toast.success(isLive() ? `${app?.name} connected with sample data` : `Using the workspace ${app?.name} account`);
               }, 600);
             }}
           >
-            Use shared account
+            {isLive() ? "Use sample data" : "Use shared account"}
           </Button>
         </div>
       ) : (
@@ -187,6 +192,7 @@ function ConnectBlock({ appId, status }: { appId: string; status: "pending" | "c
           <Check /> Connected
         </Badge>
       )}
+      {dialog && <ConnectDialog app={app ?? null} onClose={() => setDialog(false)} returnTo={typeof window !== "undefined" ? window.location.pathname : undefined} />}
     </div>
   );
 }

@@ -10,6 +10,8 @@ import { ThreadMenu, copyThreadLink } from "@/components/chat/thread-actions";
 import { useHydrated } from "@/components/workers/use-hydrated";
 import { useApp } from "@/lib/store";
 import { runAgent } from "@/lib/simulate";
+import { isLive } from "@/lib/api";
+import { loadThread } from "@/lib/backend";
 import { Message, useChatUI } from "@/components/chat/message";
 import { Composer } from "@/components/chat/composer";
 import { ArtifactPanel } from "@/components/chat/artifact-panel";
@@ -38,6 +40,12 @@ export default function ThreadPage() {
   }, [signature]);
 
   useEffect(() => () => openArtifact(null), [id, openArtifact]);
+
+  // Live mode: the thread list has no messages; fetch this conversation's history.
+  const liveReady = useApp((s) => s.liveReady);
+  useEffect(() => {
+    if (isLive() && liveReady) void loadThread(id);
+  }, [id, liveReady]);
 
   if (!thread && !hydrated)
     return (

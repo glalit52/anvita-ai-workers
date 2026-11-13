@@ -41,6 +41,21 @@ export interface Connection {
   status: "healthy" | "expired" | "error";
   sharedWith?: string[];
   actionsUsed30d: number;
+  /** Live mode: real credentials vs the sample-data driver. */
+  mode?: "live" | "demo";
+  account?: string | null;
+  statusDetail?: string | null;
+}
+
+/** How an app can be connected (from the API's /apps). */
+export interface AppAuth {
+  oauth: boolean;
+  oauthConfigured: boolean;
+  oauthNeeds: { key: string; label: string; placeholder?: string }[];
+  apiKey: { fields: { key: string; label: string; secret?: boolean; placeholder?: string; optional?: boolean }[]; help: string } | null;
+  live: boolean;
+  /** Step-by-step setup (from the API), plus what the server admin needs for "Sign in with …". */
+  guide?: { steps: string[]; docsUrl?: string; permissions?: string; oauthAdmin?: { console: string; steps: string[]; docsUrl?: string; env: string[]; redirectUri: string } } | null;
 }
 
 export type StepStatus = "pending" | "running" | "done" | "waiting" | "error" | "skipped";
@@ -129,6 +144,7 @@ export type NodeKind =
   | "send"
   | "handoff"
   | "kb"
+  | "wait"
   | "end";
 
 export interface WorkerNode {
@@ -139,7 +155,8 @@ export interface WorkerNode {
   appId?: string;
   x: number;
   y: number;
-  config?: Record<string, string | number | boolean | string[]>;
+  /** Step settings. Strings may hold {{ expressions }}; tool inputs use `input.<field>` keys. */
+  config?: Record<string, unknown>;
 }
 
 export interface WorkerEdge {
@@ -174,6 +191,8 @@ export interface Worker {
   pinned?: boolean;
   nodes: WorkerNode[];
   edges: WorkerEdge[];
+  /** graph: run the workflow step by step (default in live mode); agent: the model follows it as guidance. */
+  engine?: "graph" | "agent";
 }
 
 export interface Template {
@@ -313,6 +332,8 @@ export interface McpServer {
   auth: "oauth" | "bearer" | "none";
   tools: number;
   status: "healthy" | "error";
+  toolNames?: string[];
+  lastError?: string | null;
 }
 
 export interface Profile {

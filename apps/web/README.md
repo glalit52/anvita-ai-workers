@@ -4,8 +4,11 @@ The frontend for Anvita AI: the chat-first AI coworker (Explore) plus the AI Wor
 (Harden → Scale). Every screen in `docs/user-journeys.md` is built and fully interactive:
 everything you create, edit, approve or delete is saved in the browser (localStorage) and
 survives a reload. Data starts from a realistic demo workspace and AI runs are simulated,
-so it works end to end before the backend exists. Settings → Profile → "Reset demo data"
+so it works end to end without a server. Settings → Profile → "Reset demo data"
 restores the seed.
+
+Point it at the [Anvita backend](https://github.com/glalit52/anvita-ai-worker-backend) and the same
+screens run on real data instead (see **Live mode** below).
 
 ## Run
 
@@ -26,6 +29,84 @@ export, members, API keys, policies, Hindi UI, notifications, onboarding).
 ```bash
 npm run build && npx next start -p 3100 &
 BASE_URL=http://localhost:3100 npm run test:e2e
+```
+
+## Live mode (against the backend)
+
+Set `NEXT_PUBLIC_API_URL` and the app talks to the API instead of the local demo store:
+
+```bash
+# in anvita-ai-worker-backend
+docker compose up -d postgres && npm ci && npm run db:seed
+CORS_ORIGINS=http://localhost:3000 WEB_URL=http://localhost:3000 npm run dev   # :4000
+
+# in apps/web
+echo "NEXT_PUBLIC_API_URL=http://localhost:4000" > .env.local
+npm run dev    # sign in as priya@kesarfoods.in / anvita-demo-2026, or create a workspace
+```
+
+How it works:
+
+- `src/lib/api.ts` — fetch client, session storage, rotating refresh tokens.
+- `src/lib/backend.ts` — loads the workspace into the existing Zustand store, makes each store
+  action also call its endpoint (optimistic; on error it toasts and reloads that slice from the
+  server), and applies realtime Server-Sent Events: agent runs stream into the chat, approvals,
+  notifications, connections, queue and inbox update live. Snapshot loads never overwrite newer
+  pushed updates.
+- `src/components/live-sync.tsx` — guards signed-in routes and starts the sync.
+- Real email + password sign-in/sign-up (`/login`), Google/Microsoft single sign-on
+  (`/auth/callback` receives the session), invite acceptance (`/invite/[token]`), file uploads to
+  chat and knowledge bases.
+- **Integrations:** the connect dialog (Integrations, chat connect cards, onboarding) offers
+  "Sign in with <app>" (OAuth, when the server has that app's client configured), an API-key form
+  verified live by the server, or sample data. Connections show live/sample status, the connected
+  account and health, with a Test button and the Slack/WhatsApp webhook URLs to paste into those
+  apps. MCP servers are connected for real and their tools discovered. OpenAPI specs (file or
+  URL) are imported with their auth; each operation becomes an action.
+- **Workflow Studio:** templates come from the server's executable library. The inspector
+  configures every step type with the server's action catalog (inputs per action, expressions,
+  loops, branches, approvals, code, send channels). The graph is checked as you edit ("N to fix"),
+  **Test run** executes the draft for real and colours each step from the run trace, and the Runs
+  tab shows each run's steps and outputs. Workers can run step by step (workflow) or as an agent.
+- **Files:** artifacts open as real previews (PDF, images, CSV tables, sandboxed HTML, Markdown)
+  and download as the actual file.
+- **Security:** SAML single sign-on (IdP metadata import, SP details to copy, enforce for your
+  domains) and SCIM tokens on Settings → Security; the login page sends SSO domains to the IdP.
+- **Knowledge:** shows whether search is hybrid (keyword + semantic) and how much is indexed.
+- **Security policies:** two-step verification (TOTP + recovery codes), required MFA, IP
+  allowlist, session length, sign-out of devices, PII redaction and retention — all enforced by
+  the API (Settings → Security, Profile).
+- **Billing:** plans with usage against limits, monthly/yearly subscriptions through Razorpay or
+  Stripe, GST billing details and tax invoices with PDF download (Settings → Billing).
+- **Approvals everywhere:** each person picks email (one-click links), Slack DM (buttons) or
+  WhatsApp (reply buttons) for approval requests, plus browser push (Profile).
+- **Channels:** website chat widget (embed code), support email, phone line (voice) and
+  Microsoft Teams, each answered by a chosen Worker (Settings → Channels).
+- **Models:** routing, tiers, web browsing and fallbacks the runtime applies, and a
+  bring-your-own Anthropic key verified by the server (Settings → Models & data).
+- **Long workflows:** Wait steps (duration, date or time of day) and per-Worker run limits in
+  the Studio.
+- **Developers:** live API reference (Swagger UI + OpenAPI JSON), OpenAI-compatible
+  `/v1/chat/completions` and an MCP server for Claude Code, Cursor and other clients.
+- **First run:** a product tour after onboarding (and from Help), and step-by-step credential
+  guides in every connect dialog.
+- **Billing:** credit packs priced by the server; pay with Razorpay Checkout (in-page) or Stripe
+  Checkout (redirect); payment history from the API. Without a payment provider, admins record
+  manual top-ups.
+- **Analytics:** daily usage, per-person and per-Worker breakdowns from the API.
+
+Screens read from the same store in both modes, so no page needs to know which mode it is in.
+
+Live end-to-end tests (16 journeys: auth guard and sign-in/out, UI sign-up, connect card →
+resume, approve → send, Studio edits saved to the server, memory/members/API keys, API-key and
+sample-data connections, MCP server → agent tool call, billing top-up, SSO landing + analytics,
+template → test run with step results, validation, OpenAPI import, SAML + SCIM setup and SSO
+login routing, sandboxed Python → real file preview, knowledge search status):
+
+```bash
+# backend on :4000 with CORS_ORIGINS=http://localhost:3100 and AUTH_RATE_LIMIT_PER_MINUTE=1000
+NEXT_PUBLIC_API_URL=http://localhost:4000 npm run build && npx next start -p 3100 &
+npm run test:e2e:live
 ```
 
 ## Stack

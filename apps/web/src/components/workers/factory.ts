@@ -1,6 +1,7 @@
 import type { InteractionType, Template, Thread, Worker, WorkerEdge, WorkerNode } from "@/lib/types";
 import { workers as seedWorkers } from "@/lib/mock/workers";
 import { appById } from "@/lib/mock/apps";
+import { clientId } from "@/lib/api";
 
 const uid = () => Math.random().toString(36).slice(2, 8);
 
@@ -109,7 +110,7 @@ export function graphFor(text: string, apps: string[], interaction: InteractionT
 
 function base(partial: Partial<Worker> & Pick<Worker, "name" | "description" | "interaction" | "nodes" | "edges" | "apps">, owner: string): Worker {
   return {
-    id: `w-${uid()}`,
+    id: clientId("w"),
     emoji: emojiFor[partial.interaction],
     color: colorFor[partial.interaction],
     channels: [],
@@ -189,8 +190,19 @@ export function blankWorker(owner: string): Worker {
   );
 }
 
+/** The read action each app's data pull compiles to (mirrors the API's tool registry). */
+export const READ_ACTION: Record<string, string> = {
+  hubspot: "hubspot.deals.search", shopify: "shopify.orders.search", metaads: "metaads.insights", googleads: "googleads.report", ga4: "ga4.report",
+  zendesk: "zendesk.tickets.search", tally: "tally.vouchers.export", gcal: "gcal.events.list", gmail: "gmail.messages.search", gdrive: "gdrive.files.search",
+  gsheets: "gsheets.values.get", outlook: "outlook.messages.search", slack: "slack.channels.list", salesforce: "salesforce.query", razorpay: "razorpay.payments.list",
+  stripe: "stripe.payments.list", delhivery: "delhivery.track", freshdesk: "freshdesk.tickets.search", intercom: "intercom.conversations.search",
+  mailchimp: "mailchimp.campaigns.list", notion: "notion.search", github: "github.issues.search", jira: "jira.issues.search", linear: "linear.issues.search",
+  okta: "okta.users.search", teams: "teams.channels.list", quickbooks: "quickbooks.query", zoho: "zoho.records.search", darwinbox: "darwinbox.employees.search",
+  workday: "workday.workers.search", postgres: "postgres.query", bigquery: "bigquery.query",
+};
+
 /** Compiles an agent run (thread) into a Worker graph: tool steps → app actions, code → frozen code, LLM → agent, approvals kept. */
-export function compileThread(thread: Thread, name: string, owner: string, schedule: string): Worker {
+export function compileThread(thread: Thread, name: string, owner: string, schedule: string, deliverTo?: string): Worker {
   const steps = thread.messages.flatMap((m) => m.blocks.flatMap((b) => (b.type === "steps" ? b.steps : [])));
   const hasApproval = thread.messages.some((m) => m.blocks.some((b) => b.type === "approval"));
   const nodes: WorkerNode[] = [];
@@ -204,8 +216,8 @@ export function compileThread(thread: Thread, name: string, owner: string, sched
     return id;
   };
   const trigger = push({ kind: "trigger", title: schedule, subtitle: "Schedule · Asia/Kolkata", config: { cron: "0 9 * * MON", timezone: "Asia/Kolkata" } });
-  const tools = steps.filter((s) => s.kind === "tool" && s.appId);
-  const toolIds = tools.map((s, i) => push({ kind: "tool", title: s.label.replace(/^(Fetched|Searched|Queried|Pulled|Exported|Researched|Checked)\s+/i, ""), subtitle: `${s.appId}.read({{inputs.range}})`, appId: s.appId, config: { action: `${s.appId}.read`, sideEffect: "none" } }, (i - (tools.length - 1) / 2) * 260, false));
+  const tools = steps.filter((s) => s.kind === "tool" && s.appId && READ_ACTION[s.appId] && !steps.some((o) => o !== s && o.appId === s.appId && steps.indexOf(o) < steps.indexOf(s)));
+  const toolIds = tools.map((s, i) => push({ kind: "tool", title: s.label.replace(/^(Fetched|Searched|Queried|Pulled|Exported|Researched|Checked)\s+/i, ""), subtitle: READ_ACTION[s.appId!], appId: s.appId, config: { action: READ_ACTION[s.appId!], sideEffect: "none", range: "{{ trigger.range ?? 'last_7d' }}" } }, (i - (tools.length - 1) / 2) * 260, false));
   if (tools.length) y += 140;
   toolIds.forEach((id) => edges.push({ id: `${trigger}-${id}`, source: trigger, target: id }));
   const code = push({ kind: "code", title: "Analysis script (frozen)", subtitle: "Compiled from this run · no LLM cost", appId: "sandbox", config: { language: "python", frozen: true } });
@@ -218,11 +230,12 @@ export function compileThread(thread: Thread, name: string, owner: string, sched
     edges.push({ id: `${last}-${ap}`, source: last, target: ap });
     last = ap;
   }
-  const send = push({ kind: "send", title: "Send results", subtitle: "Slack + email", appId: thread.channel === "slack" ? "slack" : "gmail" });
+  const viaSlack = thread.channel === "slack" || !deliverTo;
+  const send = push({ kind: "send", title: viaSlack ? "Post results to #general" : `Email results to ${deliverTo}`, subtitle: viaSlack ? "Slack" : "Gmail", appId: viaSlack ? "slack" : "gmail", config: viaSlack ? { channel: "slack", to: "#general" } : { channel: "gmail", to: deliverTo, subject: name } });
   edges.push({ id: `${last}-${send}`, source: last, target: send, label: hasApproval ? "approved" : undefined });
   const end = push({ kind: "end", title: "Done" });
   edges.push({ id: `${send}-${end}`, source: send, target: end });
-  const apps = Array.from(new Set(tools.map((t) => t.appId!).concat(thread.channel === "slack" ? ["slack"] : ["gmail"])));
+  const apps = Array.from(new Set(tools.map((t) => t.appId!).concat(viaSlack ? ["slack"] : ["gmail"])));
   return base(
     {
       name,
@@ -231,7 +244,7 @@ export function compileThread(thread: Thread, name: string, owner: string, sched
       emoji: "📈",
       color: "#5B4CF0",
       apps,
-      channels: [thread.channel === "slack" ? "Slack" : "Email"],
+      channels: [viaSlack ? "Slack" : "Email"],
       trigger: schedule,
       status: "live",
       version: 1,

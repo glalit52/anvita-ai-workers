@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
-import { BookOpen, ChevronDown, Code2, Keyboard, LifeBuoy, Loader2, Search, ShieldCheck, Workflow } from "lucide-react";
+import { BookOpen, ChevronDown, Compass, Code2, Keyboard, LifeBuoy, Loader2, Search, ShieldCheck, Workflow } from "lucide-react";
 import { PageContainer } from "@/components/shell/app-shell";
 import { PageHeader, Kbd } from "@/components/ui/misc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,8 +53,9 @@ export default function HelpPage() {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search help articles — e.g. approvals, credits, WhatsApp" className="h-11 pl-9 text-[14px]" />
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[
+          { icon: Compass, t: "Product tour", d: "A two-minute walk through the app", href: "/home?tour=1" },
           { icon: BookOpen, t: "Getting started", d: "Your first tasks and channels", href: "/chat" },
           { icon: Workflow, t: "Building Workers", d: "Studio, Autopilot and evals", href: "/workers/new" },
           { icon: ShieldCheck, t: "Security & policies", d: "Approvals, SSO, residency", href: "/settings/policies" },
