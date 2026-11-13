@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { get, isLive } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Copy, ExternalLink, MoreHorizontal, Pause, Pin, PinOff, Play, Plus, Search, Sparkles, Trash2, Workflow } from "lucide-react";
@@ -82,6 +83,10 @@ function WorkerMenu({ w }: { w: Worker }) {
 export default function WorkersPage() {
   const router = useRouter();
   const [tab, setTab] = useState<"mine" | "templates">("mine");
+  const [templateCount, setTemplateCount] = useState(isLive() ? 0 : templates.length);
+  useEffect(() => {
+    if (isLive()) get<{ data: unknown[] }>("/templates").then((r) => setTemplateCount(r.data.length), () => {});
+  }, []);
   const [filter, setFilter] = useState<"all" | "live" | "draft">("all");
   const [q, setQ] = useState("");
   const workers = useApp((s) => s.workers);
@@ -116,7 +121,7 @@ export default function WorkersPage() {
       />
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <Segmented value={tab} onChange={setTab} options={[{ value: "mine", label: `My Workers (${workers.length})` }, { value: "templates", label: `Templates (${templates.length})` }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "mine", label: `My Workers (${workers.length})` }, { value: "templates", label: templateCount ? `Templates (${templateCount})` : "Templates" }]} />
         {tab === "mine" && (
           <Segmented
             value={filter}
