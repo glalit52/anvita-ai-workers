@@ -54,6 +54,8 @@ export interface AppAuth {
   oauthNeeds: { key: string; label: string; placeholder?: string }[];
   apiKey: { fields: { key: string; label: string; secret?: boolean; placeholder?: string; optional?: boolean }[]; help: string } | null;
   live: boolean;
+  /** Step-by-step setup (from the API), plus what the server admin needs for "Sign in with …". */
+  guide?: { steps: string[]; docsUrl?: string; permissions?: string; oauthAdmin?: { console: string; steps: string[]; docsUrl?: string; env: string[]; redirectUri: string } } | null;
 }
 
 export type StepStatus = "pending" | "running" | "done" | "waiting" | "error" | "skipped";

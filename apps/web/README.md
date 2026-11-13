@@ -73,6 +73,23 @@ How it works:
 - **Security:** SAML single sign-on (IdP metadata import, SP details to copy, enforce for your
   domains) and SCIM tokens on Settings → Security; the login page sends SSO domains to the IdP.
 - **Knowledge:** shows whether search is hybrid (keyword + semantic) and how much is indexed.
+- **Security policies:** two-step verification (TOTP + recovery codes), required MFA, IP
+  allowlist, session length, sign-out of devices, PII redaction and retention — all enforced by
+  the API (Settings → Security, Profile).
+- **Billing:** plans with usage against limits, monthly/yearly subscriptions through Razorpay or
+  Stripe, GST billing details and tax invoices with PDF download (Settings → Billing).
+- **Approvals everywhere:** each person picks email (one-click links), Slack DM (buttons) or
+  WhatsApp (reply buttons) for approval requests, plus browser push (Profile).
+- **Channels:** website chat widget (embed code), support email, phone line (voice) and
+  Microsoft Teams, each answered by a chosen Worker (Settings → Channels).
+- **Models:** routing, tiers, web browsing and fallbacks the runtime applies, and a
+  bring-your-own Anthropic key verified by the server (Settings → Models & data).
+- **Long workflows:** Wait steps (duration, date or time of day) and per-Worker run limits in
+  the Studio.
+- **Developers:** live API reference (Swagger UI + OpenAPI JSON), OpenAI-compatible
+  `/v1/chat/completions` and an MCP server for Claude Code, Cursor and other clients.
+- **First run:** a product tour after onboarding (and from Help), and step-by-step credential
+  guides in every connect dialog.
 - **Billing:** credit packs priced by the server; pay with Razorpay Checkout (in-page) or Stripe
   Checkout (redirect); payment history from the API. Without a payment provider, admins record
   manual top-ups.

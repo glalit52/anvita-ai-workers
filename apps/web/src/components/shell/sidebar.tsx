@@ -28,6 +28,7 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
     <Link
       href={item.href}
       onClick={onNavigate}
+      data-tour={item.href}
       className={cn(
         "group flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-card hover:text-foreground",
         active && "bg-card text-foreground shadow-sm ring-1 ring-border",

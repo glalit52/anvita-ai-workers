@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Copy, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { BookOpen, Copy, FileJson, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { API_URL } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,14 +15,34 @@ import { Field } from "@/components/settings/field";
 import { useApp } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-const curl = `curl https://api.anvita.ai/v1/workers/invoices/runs \\
+/** The API this app talks to (live mode), or the hosted default shown in the demo. */
+const apiBase = () => (API_URL || "https://api.anvita.ai").replace(/\/$/, "");
+
+const curl = (base: string) => `curl ${base}/v1/workers/<worker id>/runs \\
   -H "Authorization: Bearer $ANVITA_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"inputs": {"file_url": "https://…/invoice.pdf"}}'`;
+  -d '{"inputs": {"file_url": "https://…/invoice.pdf"}}'
 
-const mcp = `{
+# Poll the run (or subscribe to the run.completed webhook)
+curl ${base}/v1/runs/<run id> -H "Authorization: Bearer $ANVITA_API_KEY"`;
+
+const openai = (base: string) => `import os
+from openai import OpenAI
+
+client = OpenAI(base_url="${base}/v1", api_key=os.environ["ANVITA_API_KEY"])
+reply = client.chat.completions.create(
+    model="anvita",  # or "worker:<Worker id or name>"
+    messages=[{"role": "user", "content": "Which orders are stuck in RTO this week?"}],
+)
+print(reply.choices[0].message.content)`;
+
+const mcp = (base: string) => `{
   "mcpServers": {
-    "anvita": { "url": "https://api.anvita.ai/mcp", "auth": "oauth" }
+    "anvita": {
+      "type": "http",
+      "url": "${base}/v1/mcp",
+      "headers": { "Authorization": "Bearer \${ANVITA_API_KEY}" }
+    }
   }
 }`;
 
@@ -228,25 +249,57 @@ export default function DevelopersPage() {
           </tbody>
         </Table>
       </Card>
+      <Card className="mt-6" data-testid="api-reference">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>API reference</CardTitle>
+            <p className="text-[12.5px] text-muted-foreground">
+              Every endpoint with request and response schemas. Authenticate with an API key as a Bearer token. Base URL <code className="font-mono">{apiBase()}/v1</code>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => window.open(`${apiBase()}/docs`, "_blank", "noopener")}>
+              <BookOpen /> Open API reference
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => window.open(`${apiBase()}/docs/json`, "_blank", "noopener")}>
+              <FileJson /> OpenAPI JSON
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-[12.5px] text-muted-foreground sm:grid-cols-3">
+          <p><span className="font-medium text-foreground">Scopes</span> — <code className="font-mono">all</code>, <code className="font-mono">chat</code>, <code className="font-mono">workers:run</code>, <code className="font-mono">workers:&lt;id&gt;:run</code>, <code className="font-mono">kb:read</code>, <code className="font-mono">approvals</code>.</p>
+          <p><span className="font-medium text-foreground">Errors</span> — JSON <code className="font-mono">{"{ error: { code, message } }"}</code>; <code className="font-mono">402 plan_limit</code> / <code className="font-mono">insufficient_credits</code>, <code className="font-mono">429</code> when rate limited.</p>
+          <p><span className="font-medium text-foreground">Webhooks</span> — signed with your endpoint secret; retried with backoff. Events below.</p>
+        </CardContent>
+      </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Run a Worker via REST</CardTitle>
-            <p className="text-[12.5px] text-muted-foreground">
-              Also OpenAI-compatible: <code className="font-mono">POST /v1/chat/completions</code> with <code className="font-mono">model: &quot;anvita&quot;</code>
-            </p>
+            <p className="text-[12.5px] text-muted-foreground">Runs are asynchronous: you get a run id back immediately.</p>
           </CardHeader>
           <CardContent>
-            <CodeBlock code={curl} />
+            <CodeBlock code={curl(apiBase())} />
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Connect via MCP</CardTitle>
-            <p className="text-[12.5px] text-muted-foreground">Tools: ask_anvita, run_worker, list_workers, get_run, search_knowledge</p>
+            <CardTitle>OpenAI-compatible</CardTitle>
+            <p className="text-[12.5px] text-muted-foreground">
+              <code className="font-mono">POST /v1/chat/completions</code> — use any OpenAI SDK; waits for the answer (streaming supported).
+            </p>
           </CardHeader>
           <CardContent>
-            <CodeBlock code={mcp} />
+            <CodeBlock code={openai(apiBase())} />
+          </CardContent>
+        </Card>
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Connect via MCP</CardTitle>
+            <p className="text-[12.5px] text-muted-foreground">For Claude Code, Claude Desktop, Cursor and other MCP clients. Tools: ask_anvita, list_workers, run_worker, get_run, search_knowledge — limited by the key's scope.</p>
+          </CardHeader>
+          <CardContent>
+            <CodeBlock code={mcp(apiBase())} />
           </CardContent>
         </Card>
       </div>

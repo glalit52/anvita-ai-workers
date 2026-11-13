@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Check, FileUp, KeyRound, Link2, Loader2, RefreshCw, Server, Share2, ShieldCheck, Unplug, User, Users, X } from "lucide-react";
+import { Check, ExternalLink, FileUp, KeyRound, Link2, Loader2, RefreshCw, Server, Share2, ShieldCheck, Unplug, User, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +79,55 @@ function Permissions() {
 type Method = "oauth" | "key" | "demo";
 
 /** Connect an app. Demo mode simulates it; live mode offers OAuth, an API key (verified by the server) or sample data. */
+type GuideT = NonNullable<NonNullable<ReturnType<typeof useApp.getState>["appAuth"][string]>["guide"]>;
+
+function SetupGuide({ app, guide }: { app: string; guide: GuideT }) {
+  return (
+    <details className="mt-3 rounded-xl border border-border bg-subtle/60 px-3 py-2.5 text-[12.5px]" open>
+      <summary className="cursor-pointer font-medium">How to get your {app} credentials</summary>
+      <ol className="mt-2 grid list-decimal gap-1.5 pl-5 text-muted-foreground">
+        {guide.steps.map((s) => (
+          <li key={s} className="break-words">{s}</li>
+        ))}
+      </ol>
+      {guide.permissions && <p className="mt-2 text-muted-foreground">🔒 {guide.permissions}</p>}
+      {guide.docsUrl && (
+        <a href={guide.docsUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-primary hover:underline">
+          {app} documentation <ExternalLink className="size-3" />
+        </a>
+      )}
+    </details>
+  );
+}
+
+/** For admins: what the server needs to offer "Sign in with …" for this app. */
+function OAuthAdminGuide({ app, admin }: { app: string; admin: NonNullable<GuideT["oauthAdmin"]> }) {
+  return (
+    <details className="mt-3 rounded-xl border border-dashed border-border px-3 py-2.5 text-[12.5px]">
+      <summary className="cursor-pointer font-medium">Enable “Sign in with {app}” (server admin)</summary>
+      <ol className="mt-2 grid list-decimal gap-1.5 pl-5 text-muted-foreground">
+        <li>Open the {admin.console}.</li>
+        {admin.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+        <li>
+          Redirect URI: <code className="break-all rounded bg-muted px-1 font-mono text-[11.5px]">{admin.redirectUri}</code>
+        </li>
+        <li>
+          Set <code className="rounded bg-muted px-1 font-mono text-[11.5px]">{admin.env.join(" and ")}</code>
+          {" "}
+          on the API server and restart it.
+        </li>
+      </ol>
+      {admin.docsUrl && (
+        <a href={admin.docsUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-primary hover:underline">
+          Provider documentation <ExternalLink className="size-3" />
+        </a>
+      )}
+    </details>
+  );
+}
+
 export function ConnectDialog({ app, onClose, returnTo }: { app: AppDef | null; onClose: () => void; returnTo?: string }) {
   const connect = useApp((s) => s.connectApp);
   const updateConnection = useApp((s) => s.updateConnection);
@@ -158,7 +207,8 @@ export function ConnectDialog({ app, onClose, returnTo }: { app: AppDef | null; 
             <Segmented value={m} onChange={(v) => { setMethod(v); setError(null); }} options={methods} />
           </div>
         )}
-        {live && m === "key" && auth?.apiKey && <p className="mt-3 text-[12.5px] text-muted-foreground">{auth.apiKey.help}</p>}
+        {live && m === "key" && auth?.apiKey && !auth.guide?.steps.length && <p className="mt-3 text-[12.5px] text-muted-foreground">{auth.apiKey.help}</p>}
+        {live && m === "key" && auth?.guide && auth.guide.steps.length > 0 && <SetupGuide app={app.name} guide={auth.guide} />}
         {live && m === "demo" && (
           <p className="mt-3 rounded-xl bg-subtle p-3 text-[12.5px] text-muted-foreground">
             Anvita will use realistic sample data for {app.name} (results are labelled “demo data”) until you add your account.
@@ -166,6 +216,7 @@ export function ConnectDialog({ app, onClose, returnTo }: { app: AppDef | null; 
             {!auth?.live && ` A live ${app.name} connector isn't available yet.`}
           </p>
         )}
+        {live && auth?.oauth && !auth.oauthConfigured && auth.guide?.oauthAdmin && <OAuthAdminGuide app={app.name} admin={auth.guide.oauthAdmin} />}
         {needed.length > 0 && (
           <div className="mt-4 grid gap-3">
             {needed.map((f) => (

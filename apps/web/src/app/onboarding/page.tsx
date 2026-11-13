@@ -1,4 +1,5 @@
 "use client";
+import { tourDone } from "@/components/shell/product-tour";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Globe, Loader2, Lock, Sparkles } from "lucide-react";
@@ -259,7 +260,7 @@ export default function OnboardingPage() {
                   ["Chase overdue B2B invoices on WhatsApp", "₹18.4L overdue"],
                   ["Daily RTO & delivery exceptions digest", "~2 h/week"],
                 ].map(([t, s], i) => (
-                  <button key={t} onClick={() => router.push("/home")} className="flex items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/30 cursor-pointer">
+                  <button key={t} onClick={() => router.push(tourDone() ? "/home" : "/home?tour=1")} className="flex items-center gap-3 rounded-xl border border-border p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/30 cursor-pointer">
                     <span className="flex size-7 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-soft-foreground">{i + 1}</span>
                     <span className="flex-1 text-[13.5px] font-medium">{t}</span>
                     <span className="text-[12px] text-success">{s}</span>
@@ -286,7 +287,7 @@ export default function OnboardingPage() {
                 </Button>
               </div>
             ) : (
-              <Button onClick={() => router.push("/home")}>
+              <Button onClick={() => router.push(tourDone() ? "/home" : "/home?tour=1")}>
                 Go to Anvita <ArrowRight />
               </Button>
             )}
