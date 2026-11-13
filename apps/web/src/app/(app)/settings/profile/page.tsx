@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { confirm } from "@/components/ui/confirm";
 import { SectionHeader, SettingRow } from "@/components/settings-section";
 import { TwoStepCard } from "@/components/settings/two-step";
+import { NotifyChannels } from "@/components/settings/notify-channels";
 import { isLive } from "@/lib/api";
 import { Suspense } from "react";
 import { Field } from "@/components/settings/field";
@@ -118,6 +119,8 @@ export default function ProfilePage() {
           <Switch checked={profile.quietHours} onCheckedChange={(v) => pref("quietHours", v)} aria-label="Quiet hours" />
         </SettingRow>
       </Card>
+
+      {isLive() && <NotifyChannels />}
 
       {isLive() && (
         <Suspense>
