@@ -1,0 +1,31 @@
+name: Web
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: apps/web
+
+jobs:
+  build-and-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # Demo build (no NEXT_PUBLIC_API_URL): the whole product runs on sample data in the browser.
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Demo e2e
+        run: |
+          npx next start -p 3100 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null localhost:3100 && break; sleep 1; done
+          npm run test:e2e
+      # Live-mode e2e needs the API running (anvita-ai-worker-backend); see apps/web/README.md.
