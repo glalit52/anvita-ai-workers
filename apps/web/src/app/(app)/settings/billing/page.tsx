@@ -15,6 +15,7 @@ import { useApp, useSetting } from "@/lib/store";
 import { downloadFile } from "@/lib/download";
 import { isLive } from "@/lib/api";
 import { checkout, useBillingInfo, type BillingInfo } from "@/lib/billing";
+import { BillingProfileCard, LiveInvoices, LivePlans } from "@/components/settings/live-billing";
 import { cn, formatCredits, sleep } from "@/lib/utils";
 
 const plans = [
@@ -212,6 +213,9 @@ export default function BillingPage() {
         </p>
       </Card>
 
+      {isLive() ? (
+        <LivePlans />
+      ) : (
       <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((p) => {
           const current = plan === p.name;
@@ -251,6 +255,7 @@ export default function BillingPage() {
           );
         })}
       </div>
+      )}
 
       <h3 className="mb-3 mt-8 text-[15px] font-semibold">Budgets & alerts</h3>
       <Card>
@@ -263,11 +268,13 @@ export default function BillingPage() {
         <SettingRow title="Alerts" description="Notify owners at 50%, 80% and 100% of the monthly plan">
           <Switch checked={alerts} onCheckedChange={(v) => { setAlerts(v); toast.success(`Budget alerts ${v ? "on" : "off"}`); }} aria-label="Budget alerts" />
         </SettingRow>
-        <SettingRow title="Payment method" description={`${payment} · GST invoice to Kesar Foods Pvt Ltd (27AAKCK4410C1ZP)`}>
-          <Button variant="outline" size="sm" onClick={() => setPayOpen(true)}>
-            <CreditCard /> Update
-          </Button>
-        </SettingRow>
+        {!isLive() && (
+          <SettingRow title="Payment method" description={`${payment} · GST invoice to Kesar Foods Pvt Ltd (27AAKCK4410C1ZP)`}>
+            <Button variant="outline" size="sm" onClick={() => setPayOpen(true)}>
+              <CreditCard /> Update
+            </Button>
+          </SettingRow>
+        )}
         <div className="flex justify-end gap-2 px-5 py-3">
           <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => { setCapDraft(cap); setAskDraft(ask); }}>
             Discard
@@ -287,7 +294,17 @@ export default function BillingPage() {
         </div>
       </Card>
 
+      {isLive() && (
+        <>
+          <h3 className="mb-3 mt-8 text-[15px] font-semibold">Billing details (GST)</h3>
+          <BillingProfileCard />
+        </>
+      )}
+
       <h3 className="mb-3 mt-8 text-[15px] font-semibold">Invoices</h3>
+      {isLive() ? (
+        <LiveInvoices />
+      ) : (
       <Card className="divide-y divide-border">
         {isLive() && payments.length === 0 && <p className="px-5 py-4 text-[13px] text-muted-foreground">No payments yet.</p>}
         {(isLive() ? payments.map((p) => ({ id: p.id, date: new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }), amount: p.amount, status: p.status })) : invoices.map((i) => ({ ...i, status: "paid" as const }))).map((i) => (
@@ -312,6 +329,7 @@ export default function BillingPage() {
           </div>
         ))}
       </Card>
+      )}
 
       <TopUpDialog key={topUp ? "t-open" : "t-closed"} open={topUp} onOpenChange={(o) => { setTopUp(o); if (!o) refreshBilling(); }} payment={payment} info={billing} />
       <PaymentDialog

@@ -80,3 +80,32 @@ export async function checkout(credits: number, prefill: { name?: string; email?
     rz.open();
   });
 }
+
+/**
+ * Change plan. Free / no-provider changes apply at once; paid plans open Razorpay Checkout for the
+ * subscription (UPI AutoPay, cards, e-mandate) or redirect to Stripe Checkout. The plan activates
+ * when the provider's webhook confirms the first charge.
+ */
+export async function subscribeCheckout(plan: string, interval: "month" | "year", prefill: { name?: string; email?: string } = {}): Promise<"activated" | "scheduled" | "paid" | "redirected" | "dismissed"> {
+  const r = await post<{ mode: "activated" | "scheduled" | "checkout"; provider?: "razorpay" | "stripe"; url?: string; subscriptionId?: string; keyId?: string }>("/billing/subscribe", { plan, interval });
+  if (r.mode !== "checkout") return r.mode;
+  if (r.provider === "stripe") {
+    window.location.assign(r.url!);
+    return "redirected";
+  }
+  await loadRazorpay();
+  return new Promise((resolve, reject) => {
+    const rz = new window.Razorpay!({
+      key: r.keyId,
+      subscription_id: r.subscriptionId,
+      name: "Anvita AI",
+      description: `${plan[0].toUpperCase()}${plan.slice(1)} plan (${interval}ly)`,
+      prefill,
+      theme: { color: "#5B4CF0" },
+      handler: () => resolve("paid"),
+      modal: { ondismiss: () => resolve("dismissed") },
+    });
+    rz.on("payment.failed", (f) => reject(new Error(f.error.description)));
+    rz.open();
+  });
+}
