@@ -9,6 +9,9 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar } from "@/components/ui/avatar";
 import { confirm } from "@/components/ui/confirm";
 import { SectionHeader, SettingRow } from "@/components/settings-section";
+import { TwoStepCard } from "@/components/settings/two-step";
+import { isLive } from "@/lib/api";
+import { Suspense } from "react";
 import { Field } from "@/components/settings/field";
 import { useApp } from "@/lib/store";
 import type { Profile } from "@/lib/types";
@@ -116,6 +119,14 @@ export default function ProfilePage() {
         </SettingRow>
       </Card>
 
+      {isLive() && (
+        <Suspense>
+          <TwoStepCard />
+        </Suspense>
+      )}
+
+      {!isLive() && (
+      <>
       <h3 className="mb-3 mt-8 text-[15px] font-semibold text-danger">Demo data</h3>
       <Card className="border-danger/40">
         <SettingRow title="Reset demo workspace" description="Restore all chats, Workers, approvals, settings and connections to the original sample data. Everything you created in this browser is removed.">
@@ -132,6 +143,8 @@ export default function ProfilePage() {
           </Button>
         </SettingRow>
       </Card>
+      </>
+      )}
     </>
   );
 }

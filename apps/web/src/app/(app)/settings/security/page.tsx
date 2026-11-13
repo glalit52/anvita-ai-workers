@@ -11,7 +11,7 @@ import { SectionHeader, SettingRow } from "@/components/settings-section";
 import { useApp, useSetting } from "@/lib/store";
 import { downloadFile } from "@/lib/download";
 import { isLive } from "@/lib/api";
-import { EnterpriseSso } from "@/components/settings/enterprise-sso";
+import { LiveSecurity } from "@/components/settings/security-policies";
 
 const sessions = [
   { id: "s1", device: "Chrome on macOS", where: "Mumbai, IN · 49.36.••.12", when: "Active now", current: true, icon: Laptop },
@@ -55,8 +55,11 @@ export default function SecurityPage() {
   return (
     <>
       <SectionHeader title="Security & SSO" description="Identity, data residency and compliance controls." />
-      {isLive() && <EnterpriseSso />}
-      <Card className={isLive() ? "mt-4" : undefined}>
+      {isLive() ? (
+        <LiveSecurity />
+      ) : (
+      <>
+      <Card>
         {!isLive() && (
           <>
             <SettingRow title="Single sign-on (SAML / OIDC)" description="Google Workspace · kesarfoods.in · enforced for all members">
@@ -148,6 +151,8 @@ export default function SecurityPage() {
         </SettingRow>
       </Card>
 
+      </>
+      )}
       <h3 className="mb-3 mt-8 text-[15px] font-semibold">Compliance</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[

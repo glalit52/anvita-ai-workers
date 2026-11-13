@@ -2,8 +2,8 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getSession, isLive } from "@/lib/api";
-import { connectEvents, disconnectEvents, flushBufferedEvents, hydrate, installLiveActions } from "@/lib/backend";
+import { ApiError, getSession, isLive } from "@/lib/api";
+import { connectEvents, disconnectEvents, flushBufferedEvents, hydrate, installLiveActions, load } from "@/lib/backend";
 import { useApp } from "@/lib/store";
 import { appById } from "@/lib/mock/apps";
 
@@ -39,8 +39,15 @@ export function LiveSync() {
       useApp.setState({ liveReady: false });
       router.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
     };
+    const onMfaRequired = () => {
+      if (!location.pathname.startsWith("/settings/profile")) router.replace("/settings/profile?mfa=required");
+    };
     window.addEventListener("anvita:signed-out", onSignedOut);
-    return () => window.removeEventListener("anvita:signed-out", onSignedOut);
+    window.addEventListener("anvita:mfa-required", onMfaRequired);
+    return () => {
+      window.removeEventListener("anvita:signed-out", onSignedOut);
+      window.removeEventListener("anvita:mfa-required", onMfaRequired);
+    };
   }, [router]);
 
   useEffect(() => {
@@ -60,6 +67,11 @@ export function LiveSync() {
       .then(flushBufferedEvents)
       .catch((e: Error) => {
         loadedFor.current = null;
+        // Workspace requires two-step verification: load just the profile so it can be set up.
+        if (e instanceof ApiError && e.code === "mfa_required") {
+          void load.me().then(() => useApp.setState({ liveReady: true }));
+          return;
+        }
         toast.error(`Couldn't load your workspace: ${e.message}`);
       });
   }, [pathname, router]);

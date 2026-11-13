@@ -7,7 +7,7 @@ import { Loader2, Mail, Smartphone } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { API_URL, ApiError, get, isLive, login, logout, signup } from "@/lib/api";
+import { API_URL, ApiError, get, isLive, login, loginMfa, logout, signup } from "@/lib/api";
 import { useApp } from "@/lib/store";
 
 function GoogleIcon() {
@@ -87,17 +87,44 @@ function LoginInner() {
     window.location.href = `${loginUrl}?redirect=${encodeURIComponent(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home")}`;
   };
 
+  // Two-step verification: after the password, ask for the authenticator (or recovery) code.
+  const [mfa, setMfa] = useState<{ token: string; code: string } | null>(null);
+  const finish = (onboarding: boolean) => {
+    useApp.setState({ liveReady: false });
+    const next = params.get("next");
+    router.push(onboarding ? "/onboarding" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
+  };
+  const submitMfa = async () => {
+    if (!mfa) return;
+    setError(null);
+    setLoading("otp");
+    try {
+      await loginMfa(mfa.token, mfa.code.trim());
+      finish(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+      setLoading(null);
+    }
+  };
+
   /** Live mode: real email + password auth against the API. */
   const submitLive = async () => {
     if (saml?.enforced && mode !== "signup") return ssoRedirect(saml.loginUrl);
     setError(null);
     setLoading("otp");
     try {
-      if (mode === "signup") await signup({ name: form.name.trim(), email: form.email.trim(), password: form.password, workspaceName: form.workspaceName.trim() || `${form.name.trim().split(" ")[0]}'s workspace` });
-      else await login(form.email.trim(), form.password);
-      useApp.setState({ liveReady: false });
-      const next = params.get("next");
-      router.push(mode === "signup" ? "/onboarding" : next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
+      if (mode === "signup") {
+        const r = (await signup({ name: form.name.trim(), email: form.email.trim(), password: form.password, workspaceName: form.workspaceName.trim() || `${form.name.trim().split(" ")[0]}'s workspace` })) as { joinedExisting?: boolean };
+        if (r.joinedExisting) toast.success("You've joined your company's workspace");
+        return finish(!r.joinedExisting);
+      }
+      const r = await login(form.email.trim(), form.password);
+      if ("mfaRequired" in r) {
+        setMfa({ token: r.mfaToken, code: "" });
+        setLoading(null);
+        return;
+      }
+      finish(false);
     } catch (e) {
       const loginUrl = e instanceof ApiError && e.code === "sso_required" ? (e.details as { loginUrl?: string } | undefined)?.loginUrl : undefined;
       if (loginUrl) return ssoRedirect(loginUrl);
@@ -129,7 +156,28 @@ function LoginInner() {
             <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
           </div>
 
-          {live ? (
+          {live && mfa ? (
+            <form
+              className="grid gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitMfa();
+              }}
+            >
+              <p className="text-[13.5px] text-muted-foreground">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+              <div className="grid gap-1.5">
+                <Label htmlFor="mfa-code">Verification code</Label>
+                <Input id="mfa-code" autoComplete="one-time-code" inputMode="numeric" autoFocus value={mfa.code} onChange={(e) => setMfa({ ...mfa, code: e.target.value })} required />
+              </div>
+              {error && <p role="alert" className="text-[12.5px] text-danger">{error}</p>}
+              <Button type="submit" size="lg" disabled={!!loading}>
+                {loading === "otp" && <Loader2 className="animate-spin" />} Verify
+              </Button>
+              <button type="button" className="text-[12.5px] text-muted-foreground hover:text-foreground cursor-pointer" onClick={() => setMfa(null)}>
+                Back
+              </button>
+            </form>
+          ) : live ? (
             <form
               className="grid gap-3"
               onSubmit={(e) => {

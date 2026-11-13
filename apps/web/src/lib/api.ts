@@ -101,6 +101,11 @@ export async function api<T = any>(method: string, path: string, body?: Body, re
   if (!res.ok) {
     const err = (data as { error?: { code?: string; message?: string; details?: unknown } } | undefined)?.error;
     const detail = Array.isArray(err?.details) ? (err.details[0] as { message?: string } | undefined)?.message : undefined;
+    // Workspace security policies: expired/revoked sessions sign out; MFA sends people to set it up.
+    if (typeof window !== "undefined") {
+      if (res.status === 401 && (err?.code === "session_expired" || err?.code === "session_revoked")) window.dispatchEvent(new Event("anvita:signed-out"));
+      if (res.status === 403 && err?.code === "mfa_required") window.dispatchEvent(new Event("anvita:mfa-required"));
+    }
     throw new ApiError(res.status, err?.code ?? "error", detail ? `${err?.message}: ${detail}` : (err?.message ?? `Request failed (${res.status})`), err?.details);
   }
   return data as T;
@@ -131,10 +136,23 @@ export interface AuthResponse {
   workspaceId?: string;
 }
 
-export async function login(email: string, password: string) {
-  const r = await api<AuthResponse>("POST", "/auth/login", { email, password });
+/** Password sign-in. With two-step verification on, returns `{ mfaToken }` for `loginMfa`. */
+export async function login(email: string, password: string): Promise<AuthResponse | { mfaRequired: true; mfaToken: string }> {
+  const r = await api<AuthResponse & { mfaRequired?: boolean; mfaToken?: string }>("POST", "/auth/login", { email, password });
+  if (r.mfaRequired && r.mfaToken) return { mfaRequired: true, mfaToken: r.mfaToken };
   setSession({ accessToken: r.accessToken, refreshToken: r.refreshToken, workspaceId: r.workspaces[0]?.id ?? null });
   return r;
+}
+
+export async function loginMfa(mfaToken: string, code: string) {
+  const r = await api<AuthResponse>("POST", "/auth/mfa", { mfaToken, code });
+  setSession({ accessToken: r.accessToken, refreshToken: r.refreshToken, workspaceId: r.workspaces[0]?.id ?? null });
+  return r;
+}
+
+/** Swap in upgraded tokens for the current session (e.g. after turning on two-step verification). */
+export function replaceTokens(accessToken: string, refreshToken: string) {
+  if (session) setSession({ ...session, accessToken, refreshToken });
 }
 
 export async function signup(input: { name: string; email: string; password: string; workspaceName: string }) {

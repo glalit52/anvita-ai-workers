@@ -35,3 +35,21 @@ export async function open(t, session) {
   };
   return { page, go, errors };
 }
+
+/** RFC 6238 TOTP for tests (SHA-1, 6 digits, 30 s). */
+export async function totp(secret) {
+  const { createHmac } = await import("node:crypto");
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0;
+  const bytes = [];
+  for (const c of secret.replace(/=+$/, "")) {
+    value = (value << 5) | A.indexOf(c);
+    bits += 5;
+    if (bits >= 8) bytes.push((value >>> (bits -= 8)) & 255);
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const h = createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
+  const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1000000).padStart(6, "0");
+}
